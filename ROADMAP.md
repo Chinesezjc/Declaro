@@ -223,8 +223,31 @@ declaro deploy → 编译所有页面 + 启动服务端 + 部署到 Vercel/Cloud
 ## 时间线
 
 ```
-Phase 1  ████████░░░░░░░░░░  插件 API + Script/Head    现在
-Phase 2  ░░░░░░░░████████░░  Islands 架构              1-2 周
-Phase 3  ░░░░░░░░░░░░░░████  组件市场 + 工具链          1-2 月
-Phase 4  ░░░░░░░░░░░░░░░░░░  高级状态 + 全栈            3-6 月
+Phase 1  ██████████████████  插件 API + Script/Head    ✅ 完成 (2026-06-19)
+Phase 2  ██████████████████  Islands 架构              ✅ 完成 (2026-06-20)
+Phase 3  ██████████████████  组件市场 + 工具链          ✅ 完成 (2026-06-20)
+Phase 4  ██████████████████  高级状态 + 全栈            ✅ 完成 (2026-06-20)
 ```
+
+### Phase 2 实现总结
+
+- `src/runtime/` — 模块化客户端运行时（state, dom, island, legacy）
+- `src/dsl/components/island.ts` — IslandNode 类型 + Island() 工厂
+- `scripts/build-runtime.ts` — esbuild 打包，gzip ~2.6KB
+- 编译器：Island 编译、运行时注入、actionToJS 扩展（全部 ActionContext 方法）
+- Slider/Modal 运行时实现
+- React 渲染器 Island 支持
+
+### Phase 3 实现总结
+
+- `src/adapter/react/compileToReact.ts` — 反向适配器（Next.js/Remix）
+- `packages/create-declaro/` — 脚手架 CLI（npx create-declaro）
+- `src/server/vite-plugin.ts` — HMR 插件（declaro dev --hot）
+- CLI 新增 `add` 命令（declaro add <pkg>）
+
+### Phase 4 实现总结
+
+- `src/runtime/state-v2.ts` — 深度响应式 State（createState + deep: true）
+- `src/runtime/sync.ts` — 服务端状态同步（createSyncedState）
+- `src/cli/deploy.ts` — declaro deploy --target=vercel|cloudflare|node
+- 部署适配器：Vercel（vercel.json）、Cloudflare Workers（wrangler.toml）、Node/Docker（Dockerfile + docker-compose.yml）
