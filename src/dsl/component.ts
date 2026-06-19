@@ -3,7 +3,9 @@ import type { BoxNode } from "./components/box"
 import type { ButtonNode } from "./components/button"
 import type { CardNode } from "./components/card"
 import type { FormNode } from "./components/form"
+import type { HtmlNode } from "./components/html"
 import type { InputNode } from "./components/input"
+import type { KatexNode } from "./components/katex"
 import type { ListNode } from "./components/list"
 import type { ModalNode } from "./components/modal"
 import type { SelectNode } from "./components/select"
@@ -16,7 +18,9 @@ export type ComponentNode =
   | TextNode
   | BoxNode
   | ButtonNode
+  | HtmlNode
   | InputNode
+  | KatexNode
   | SelectNode
   | SliderNode
   | TextAreaNode

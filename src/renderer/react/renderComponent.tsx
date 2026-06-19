@@ -1,4 +1,6 @@
 import type React from "react"
+import { createElement } from "react"
+import katex from "katex"
 import type { ComponentNode } from "../../dsl"
 import { withSelfAlignment } from "./alignment"
 import type { ParentSizing, RenderContext } from "./types"
@@ -57,9 +59,37 @@ function renderComponentContent(component: ComponentNode, ctx: RenderContext): R
           renderNode={renderComponent}
         />
       )
+    case "html":
+      return createElement("span", {
+        key: component.id ?? "html",
+        className: "dsl-html",
+        dangerouslySetInnerHTML: { __html: component.html },
+      })
+    case "katex": {
+      let katexHtml = ""
+      try {
+        katexHtml = katex.renderToString(component.expression, {
+          displayMode: component.displayMode ?? false,
+          throwOnError: false,
+        })
+      } catch {
+        katexHtml = escapeHtml(component.expression)
+      }
+      const tag = component.displayMode ? "div" : "span"
+      const cls = component.displayMode ? "dsl-katex dsl-katex-block" : "dsl-katex dsl-katex-inline"
+      return createElement(tag, {
+        key: component.id ?? "katex",
+        className: cls,
+        dangerouslySetInnerHTML: { __html: katexHtml },
+      })
+    }
     case "text":
       return <RenderText key={component.id ?? component.text} node={component} ctx={ctx} renderNode={renderComponent} />
     default:
       return null
   }
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 }
