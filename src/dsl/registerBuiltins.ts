@@ -17,6 +17,7 @@ import type { SliderNode } from "./components/slider"
 import type { TableNode } from "./components/table"
 import type { TextNode } from "./components/text"
 import type { TextAreaNode } from "./components/textarea"
+import type { IslandNode } from "./components/island"
 import type { ComponentNode } from "./component"
 
 // Compile functions — imported lazily to avoid circular deps.
@@ -50,3 +51,4 @@ defineComponent({ type: "slider", compile: (n) => compile("slider", n), nested: 
 defineComponent({ type: "table", compile: (n) => compile("table", n), nested: (n) => [...((n as TableNode).titleActions ?? []), ...((n as TableNode).rowActions ?? [])] })
 defineComponent({ type: "text", compile: (n) => compile("text", n), nested: (n) => [...((n as TextNode).titleActions ?? [])] })
 defineComponent({ type: "textarea", compile: (n) => compile("textarea", n), nested: empty })
+defineComponent({ type: "island", compile: (n) => compile("island", n), nested: (n) => [(n as IslandNode).render((n as IslandNode).initialState)] })

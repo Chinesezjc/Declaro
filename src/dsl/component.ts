@@ -14,6 +14,7 @@ import type { SliderNode } from "./components/slider"
 import type { TableNode } from "./components/table"
 import type { TextNode } from "./components/text"
 import type { TextAreaNode } from "./components/textarea"
+import type { IslandNode } from "./components/island"
 import { type PluginNode, getPlugin } from "./plugin"
 
 export type ComponentNode =
@@ -32,6 +33,7 @@ export type ComponentNode =
   | TableNode
   | CardNode
   | ModalNode
+  | IslandNode
   | PluginNode
 
 export type SerializableIR =
@@ -147,6 +149,10 @@ function getNestedChildren(component: ComponentNode): ComponentNode[] {
       return [...(component.titleActions ?? []), ...(component.rowActions ?? [])]
     case "text":
       return [...(component.titleActions ?? [])]
+    case "island": {
+      const island = component as IslandNode
+      return [island.render(island.initialState)]
+    }
     default:
       return []
   }
@@ -195,6 +201,15 @@ function sortComponentNode(component: ComponentNode): ComponentNode {
         ...component,
         titleActions: component.titleActions ? sortComponentTree(component.titleActions) : undefined,
       }
+    case "island": {
+      const island = component as IslandNode
+      return {
+        ...island,
+        initialState: { ...island.initialState },
+        render: island.render,
+        handlers: island.handlers ? { ...island.handlers } : undefined,
+      }
+    }
     default:
       return component
   }

@@ -19,6 +19,7 @@ export * from "./components/slider"
 export * from "./components/table"
 export * from "./components/text"
 export * from "./components/textarea"
+export * from "./components/island"
 
 // Side-effect: register all built-in components in the plugin registry
 import "./registerBuiltins"

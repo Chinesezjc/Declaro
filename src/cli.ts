@@ -7,15 +7,20 @@ const HELP = `
 Declaro — TypeScript 嵌入式 UI DSL 编译器
 
 用法:
-  declaro dev                 启动 Express 服务端（编译所有页面 + 数据 API）
-  declaro compile <file>     编译单个 DSL 页面 → 输出 HTML
-  declaro compile --all       编译所有注册页面 → dist/
-  declaro --help              显示帮助
+  declaro dev [--hot]          启动 Express 服务端（编译所有页面 + 数据 API）
+  declaro compile <file>       编译单个 DSL 页面 → 输出 HTML
+  declaro compile --all        编译所有注册页面 → dist/
+  declaro add <package>        安装 Declaro 插件包
+  declaro deploy [--target=vercel|cloudflare|node]  部署到生产环境
+  declaro --help               显示帮助
 
 示例:
   declaro dev
+  declaro dev --hot           启动开发服务器（HMR 热更新）
   declaro compile src/dslPages/myPage.ts
   declaro compile --all
+  declaro add declaro-chart
+  declaro deploy --target=vercel
 `
 
 async function main() {
@@ -28,6 +33,32 @@ async function main() {
   }
 
   if (cmd === "dev") {
+    const hot = args.includes("--hot")
+    if (hot) {
+      console.log("Starting Declaro dev server with HMR...")
+      // Use Vite with the Declaro HMR plugin
+      const { createServer } = await import("vite")
+      const { declaroHMRPlugin } = await import("./server/vite-plugin.js")
+      const { dslRoutes } = await import("./app/routes.js")
+
+      const server = await createServer({
+        root: process.cwd(),
+        plugins: [
+          declaroHMRPlugin({
+            getRoutes: () => dslRoutes as unknown as Array<{ key: string; path: string; page: import("./dsl/index.js").PageNode }>,
+            pagesDir: "src/dslPages",
+          }),
+        ],
+        server: {
+          port: 3000,
+        },
+      })
+      await server.listen()
+      console.log(`\n🚀 Declaro HMR server running at http://localhost:3000`)
+      console.log("Watching src/dslPages/ for changes...")
+      return
+    }
+
     console.log("Starting Declaro server...")
     await import("./server/index.js")
     return
@@ -92,6 +123,34 @@ async function main() {
       console.error("Error:", err instanceof Error ? err.message : err)
       process.exit(1)
     }
+    return
+  }
+
+  if (cmd === "add") {
+    const pkgName = args[1]
+    if (!pkgName) {
+      console.error("Error: 请指定要安装的插件包名")
+      console.log("  declaro add declaro-chart")
+      process.exit(1)
+    }
+
+    console.log(`Installing ${pkgName}...`)
+    const { execSync } = await import("node:child_process")
+    try {
+      execSync(`npm install ${pkgName}`, { stdio: "inherit", cwd: process.cwd() })
+      console.log(`\n✓ ${pkgName} installed`)
+      console.log(`\nTo use it, import the component in your page file:`)
+      console.log(`  import { ... } from "${pkgName}"`)
+    } catch {
+      console.error(`Failed to install ${pkgName}`)
+      process.exit(1)
+    }
+    return
+  }
+
+  if (cmd === "deploy") {
+    const { deployCommand } = await import("./cli/deploy.js")
+    await deployCommand(args.slice(1))
     return
   }
 

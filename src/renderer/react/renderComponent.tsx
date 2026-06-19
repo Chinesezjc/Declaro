@@ -11,6 +11,7 @@ import { RenderButton } from "./components/RenderButton"
 import { RenderCard } from "./components/RenderCard"
 import { RenderForm } from "./components/RenderForm"
 import { RenderInput } from "./components/RenderInput"
+import { RenderIsland } from "./components/RenderIsland"
 import { RenderList } from "./components/RenderList"
 import { RenderModal } from "./components/RenderModal"
 import { RenderTable } from "./components/RenderTable"
@@ -87,6 +88,8 @@ function renderComponentContent(component: ComponentNode, ctx: RenderContext): R
     case "script":
       // Script nodes are for <head>, don't render in body
       return null
+    case "island":
+      return <RenderIsland key={component.id} node={component} ctx={ctx} renderNode={renderComponent} />
     case "text":
       return <RenderText key={component.id ?? component.text} node={component} ctx={ctx} renderNode={renderComponent} />
     default: {

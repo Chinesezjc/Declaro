@@ -1,0 +1,16 @@
+{
+  "name": "create-declaro",
+  "version": "0.1.0",
+  "description": "Scaffold a new Declaro project",
+  "type": "module",
+  "bin": {
+    "create-declaro": "./bin/create-declaro.mjs"
+  },
+  "files": [
+    "bin/",
+    "templates/",
+    "package.json"
+  ],
+  "keywords": ["declaro", "scaffold", "dsl", "static-site"],
+  "license": "MIT"
+}

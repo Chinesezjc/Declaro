@@ -761,6 +761,94 @@ button:disabled {
 .dsl-modal {
   border-color: #99f6e4;
   background: #f0fdfa;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  max-width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+  padding: 24px;
+}
+
+.dsl-modal[hidden] {
+  display: none;
+}
+
+.dsl-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 99;
+  animation: dsl-fade-in 180ms ease;
+}
+
+@keyframes dsl-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ===== Slider Runtime ===== */
+
+.dsl-slider-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dsl-slider-field[data-dsl-slider] {
+  padding: 8px 0;
+}
+
+.dsl-slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.dsl-slider-label output {
+  font-size: 13px;
+  color: #0f766e;
+  background: #f0fdfa;
+  padding: 2px 8px;
+  border-radius: 4px;
+  min-width: 48px;
+  text-align: center;
+}
+
+.dsl-slider-field input[type="range"] {
+  width: 100%;
+  accent-color: #0f766e;
+}
+
+.dsl-slider-num {
+  width: 80px;
+  padding: 4px 8px;
+  border: 1px solid #d8dee8;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+/* ===== Island ===== */
+
+[data-island] {
+  /* Islands are normal DOM elements, no special styling needed.
+     The data-island attribute marks them for hydration. */
+}
+
+[data-dsl-text] {
+  /* Text bindings update in place — no visible change */
+}
+
+/* ===== Toast visible state ===== */
+
+.toast-visible {
+  animation: none;
 }
 
 @media (min-width: 980px) {

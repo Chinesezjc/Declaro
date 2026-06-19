@@ -25,6 +25,7 @@ import {
   registerBuiltinCompilers,
 } from "../dsl"
 import type { ScriptNode } from "../dsl/components/script"
+import type { IslandNode } from "../dsl/components/island"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -35,10 +36,23 @@ function loadCSS(): string {
   return fs.readFileSync(cssPath, "utf-8")
 }
 
+// ===== Runtime JS =====
+const RUNTIME_JS_PATH = path.resolve(__dirname, "../runtime/dist/runtime.min.js")
+let RUNTIME_JS = ""
+try {
+  RUNTIME_JS = fs.readFileSync(RUNTIME_JS_PATH, "utf-8")
+} catch {
+  // Fallback: during development, runtime may not be built yet
+  console.warn("Warning: Runtime bundle not found at", RUNTIME_JS_PATH)
+  console.warn("Run `npm run build:runtime` to build the client runtime.")
+}
+
 // ===== Action to JS =====
 function actionToJS(action: Action | undefined): string {
   if (!action) return ""
   const src = action.toString()
+  const D = "__DSL__"
+
   // ctx.toast("msg", { variant: "...", duration: N })
   const toastMatch = src.match(
     /ctx\.toast\s*\(\s*["']([^"']+)["']\s*,\s*\{[^}]*variant\s*:\s*["'](\w+)["'][^}]*duration\s*:\s*(\d+)[^}]*\}/,
@@ -46,8 +60,50 @@ function actionToJS(action: Action | undefined): string {
   if (toastMatch) {
     const [, msg, variant, duration] = toastMatch
     const decoded = unescapeJSString(msg)
-    return `showToast('${escapeJS(decoded)}','${variant}',${duration})`
+    return `${D}.showToast('${escapeJS(decoded)}','${variant}',${duration})`
   }
+
+  // ctx.request.get(url)
+  const getMatch = src.match(/ctx\.request\.get\s*\(\s*["']([^"']+)["']\s*\)/)
+  if (getMatch) {
+    return `fetch('${getMatch[1]}').then(function(r){return r.json()})`
+  }
+
+  // ctx.request.post(url, body)
+  const postMatch = src.match(/ctx\.request\.post\s*\(\s*["']([^"']+)["']\s*,\s*(\w+(?:\.\w+)*)\s*\)/)
+  if (postMatch) {
+    return `fetch('${postMatch[1]}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(${postMatch[2]})}).then(function(r){return r.json()})`
+  }
+
+  // ctx.navigate(path)
+  const navMatch = src.match(/ctx\.navigate\s*\(\s*["']([^"']+)["']\s*\)/)
+  if (navMatch) {
+    return `window.location.href='${navMatch[1]}'`
+  }
+
+  // ctx.refresh()
+  if (src.includes("ctx.refresh()")) {
+    return "window.location.reload()"
+  }
+
+  // ctx.openModal(id)
+  const openModalMatch = src.match(/ctx\.openModal\s*\(\s*["']([^"']+)["']\s*\)/)
+  if (openModalMatch) {
+    return `${D}.openModal('${openModalMatch[1]}')`
+  }
+
+  // ctx.closeModal(id)
+  const closeModalMatch = src.match(/ctx\.closeModal\s*\(\s*["']([^"']+)["']\s*\)/)
+  if (closeModalMatch) {
+    return `${D}.closeModal('${closeModalMatch[1]}')`
+  }
+
+  // ctx.emitSignal(sig)
+  const emitMatch = src.match(/ctx\.emitSignal\s*\((\{[^}]+\})\)/)
+  if (emitMatch) {
+    return `${D}.emitSignal(${emitMatch[1]})`
+  }
+
   return `console.log('Action: ${escapeJS(src.slice(0, 60))}...')`
 }
 
@@ -218,14 +274,22 @@ function compileSelect(node: SelectNode): string {
 }
 
 function compileSlider(node: SliderNode): string {
-  // Degraded: render as text showing the default value
   const label = node.label ?? node.name
   const defVal = node.defaultValue ?? node.min ?? 0
-  return `<label class="dsl-field dsl-slider-field">
-  <span>${escapeHTML(label)}</span>
-  <output>${defVal}</output>
-  <span class="dsl-slider-static">(${node.min ?? 0}–${node.max ?? 100})</span>
-</label>`
+  const min = node.min ?? 0
+  const max = node.max ?? 100
+  const step = node.step ?? 1
+  const valueType = node.valueType ?? "int"
+  const sliderConfig = JSON.stringify({ name: node.name, min, max, step, valueType, defaultValue: defVal })
+  const inputAttrs = node.input ? " data-dsl-slider-input" : ""
+  return `<div class="dsl-slider-field" data-dsl-slider='${sliderConfig}'>
+  <span class="dsl-slider-label">
+    <span>${escapeHTML(label)}</span>
+    <output>${defVal}</output>
+  </span>
+  <input type="range" min="${min}" max="${max}" step="${step}" value="${defVal}"${inputAttrs}>
+  ${node.input ? `<input type="number" min="${min}" max="${max}" step="${step}" value="${defVal}" class="dsl-slider-num">` : ""}
+</div>`
 }
 
 function compileTextArea(node: TextAreaNode): string {
@@ -292,6 +356,103 @@ function compileModal(node: ModalNode): string {
 </section>`
 }
 
+// ===== Island =====
+function compileIsland(node: IslandNode): string {
+  // Compile the initial render to static HTML
+  const childTree = node.render(node.initialState)
+  const staticHTML = compileComponent(childTree)
+
+  // Walk the child tree to find Text nodes that reference state properties,
+  // marking them with data-dsl-text attributes for runtime binding.
+  let markedHTML = markStateBindings(staticHTML, childTree, node.initialState)
+
+  // Collect handler names and wire up button events
+  const handlerNames = node.handlers ? Object.keys(node.handlers) : []
+
+  // Add data-dsl-event attributes to buttons by matching handler names to button text
+  // Strategy: each handler is mapped to a button whose text matches (case-insensitive camelCase)
+  if (handlerNames.length > 0) {
+    // Replace button elements to include data-dsl-event attributes
+    // We assign handlers to buttons in document order
+    let handlerIdx = 0
+    markedHTML = markedHTML.replace(
+      /<button class="dsl-button([^"]*)" type="button"([^>]*)>/g,
+      (match, cls, rest) => {
+        if (handlerIdx < handlerNames.length) {
+          const name = handlerNames[handlerIdx]
+          handlerIdx++
+          // Insert data-dsl-event before closing >
+          return `<button class="dsl-button${cls}" type="button" data-dsl-event="click:${escapeHTML(name)}"${rest}>`
+        }
+        return match
+      },
+    )
+  }
+
+  // Generate island definition script
+  const stateJson = JSON.stringify(node.initialState)
+  const handlerDefs = handlerNames
+    .map((name) => {
+      const handler = node.handlers![name]
+      const fnBody = handler.toString()
+      return `function __dsl_h_${safeJSId(node.id)}_${safeJSId(name)}(event,stateHandle,container){${generateHandlerBody(fnBody)}}`
+    })
+    .join("\n")
+  const handlerMap = handlerNames
+    .map((name) => `"${name}":__dsl_h_${safeJSId(node.id)}_${safeJSId(name)}`)
+    .join(",")
+
+  return `<div data-island="${escapeHTML(node.id)}" data-dsl-initial-state='${escapeHTML(stateJson)}'>
+${markedHTML}
+</div>
+<script>
+${handlerDefs}
+__DSL__.defineIsland({
+  id: "${escapeJS(node.id)}",
+  initialState: ${stateJson},
+  handlers: {${handlerMap}}
+});
+__DSL__.hydrateAll();
+</script>`
+}
+
+// Walk the compiled HTML and child tree to insert data-dsl-text markers
+function markStateBindings(html: string, tree: ComponentNode, state: Record<string, unknown>): string {
+  // Find Text nodes whose text contains state property values
+  // and wrap those values in <span data-dsl-text="key">value</span>
+  let result = html
+  for (const key of Object.keys(state)) {
+    const val = state[key]
+    if (val == null) continue
+    const strVal = String(val)
+    // Only replace if the value appears as text content (not inside HTML tags)
+    const textRegex = new RegExp(`(>)([^<]*?)(${escapeRegex(strVal)})([^<]*?)(<)`, "g")
+    result = result.replace(textRegex, (_m, before, prefix, match, suffix, after) => {
+      return `${before}${escapeHTML(prefix)}<span data-dsl-text="${escapeHTML(key)}">${escapeHTML(match)}</span>${escapeHTML(suffix)}${after}`
+    })
+  }
+  return result
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function safeJSId(s: string): string {
+  return s.replace(/[^a-zA-Z0-9_$]/g, "_")
+}
+
+function generateHandlerBody(fnStr: string): string {
+  // Extract the function body from the toString() output
+  // The handler signature is (event, state, set) => { ... }
+  const bodyMatch = fnStr.match(/=>\s*(\{[\s\S]*\})/m)
+  if (bodyMatch) return bodyMatch[1]
+  // Try function body
+  const funcMatch = fnStr.match(/function\s*\([^)]*\)\s*(\{[\s\S]*\})/m)
+  if (funcMatch) return funcMatch[1]
+  return fnStr
+}
+
 // ===== Katex =====
 function compileKatex(node: KatexNode): string {
   try {
@@ -327,21 +488,22 @@ function compileScript(node: ScriptNode): string {
 
 // ===== Compile helpers =====
 const builtinCompilers: Record<string, (node: ComponentNode) => string> = {
-  box: (n) => compileBox(n as BoxNode),
-  button: (n) => compileButton(n as BoxNode as ButtonNode),
-  card: (n) => compileCard(n as BoxNode as CardNode),
-  form: (n) => compileForm(n as BoxNode as FormNode),
+  box: (n) => compileBox(n as unknown as BoxNode),
+  button: (n) => compileButton(n as unknown as ButtonNode),
+  card: (n) => compileCard(n as unknown as CardNode),
+  form: (n) => compileForm(n as unknown as FormNode),
   html: (n) => (n as unknown as { html: string }).html,
-  input: (n) => compileInput(n as BoxNode as InputNode),
-  katex: (n) => compileKatex(n as BoxNode as KatexNode),
-  list: (n) => compileList(n as BoxNode as ListNode),
-  modal: (n) => compileModal(n as BoxNode as ModalNode),
-  script: (n) => compileScript(n as BoxNode as ScriptNode),
-  select: (n) => compileSelect(n as BoxNode as SelectNode),
-  slider: (n) => compileSlider(n as BoxNode as SliderNode),
-  table: (n) => compileTable(n as BoxNode as TableNode),
-  text: (n) => compileText(n as BoxNode as TextNode),
-  textarea: (n) => compileTextArea(n as BoxNode as TextAreaNode),
+  input: (n) => compileInput(n as unknown as InputNode),
+  katex: (n) => compileKatex(n as unknown as KatexNode),
+  list: (n) => compileList(n as unknown as ListNode),
+  modal: (n) => compileModal(n as unknown as ModalNode),
+  script: (n) => compileScript(n as unknown as ScriptNode),
+  select: (n) => compileSelect(n as unknown as SelectNode),
+  slider: (n) => compileSlider(n as unknown as SliderNode),
+  table: (n) => compileTable(n as unknown as TableNode),
+  text: (n) => compileText(n as unknown as TextNode),
+  textarea: (n) => compileTextArea(n as unknown as TextAreaNode),
+  island: (n) => compileIsland(n as unknown as IslandNode),
 }
 
 // Wire up built-in compilers into the registry
@@ -448,93 +610,7 @@ ${layoutHTML}
 </div>
 <div class="toast-stack" role="status" aria-live="polite"></div>
 <script>
-// ===== Declaro Runtime =====
-function toggleCollapse(btn) {
-  var section = btn.closest('.dsl-card') || btn.closest('.dsl-box');
-  if (!section) return;
-  var isCollapsed = section.getAttribute('data-collapsed') === 'true';
-  section.setAttribute('data-collapsed', String(!isCollapsed));
-  btn.textContent = isCollapsed
-    ? (btn.getAttribute('data-collapse-label') || '收起')
-    : (btn.getAttribute('data-expand-label') || '展开');
-  btn.setAttribute('aria-expanded', String(isCollapsed));
-  var bodies = section.querySelectorAll('.dsl-card-body, .dsl-card-footer, .dsl-box-children');
-  bodies.forEach(function(el) { el.style.display = isCollapsed ? '' : 'none'; });
-}
-
-function showToast(message, variant, duration) {
-  var stack = document.querySelector('.toast-stack');
-  if (!stack) return;
-  var toast = document.createElement('div');
-  toast.className = 'toast toast-' + (variant || 'info') + ' toast-entering-fade-right';
-  toast.textContent = message;
-  toast.style.animationDuration = '180ms';
-  stack.appendChild(toast);
-  var t1 = setTimeout(function() {
-    toast.className = 'toast toast-' + (variant || 'info') + ' toast-visible';
-  }, 180);
-  var t2 = setTimeout(function() {
-    toast.className = 'toast toast-' + (variant || 'info') + ' toast-exiting-fade-right';
-    toast.style.animationDuration = '240ms';
-    setTimeout(function() { toast.remove(); }, 240);
-  }, (duration || 2600) + 180);
-}
-
-function handleFormSubmit(event, formId) {
-  event.preventDefault();
-  var form = event.target;
-  var data = new FormData(form);
-  var values = {};
-  data.forEach(function(v, k) { values[k] = v; });
-  fetch('/api/form/' + formId, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(values)
-  }).then(function(r) { return r.json(); })
-    .then(function(result) {
-      showToast(result.message || '已提交', result.ok ? 'success' : 'warning', 3000);
-    })
-    .catch(function() { showToast('提交失败', 'danger', 3000); });
-}
-
-// Load tables
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.dsl-table[data-datasource]').forEach(function(table) {
-    var url = table.getAttribute('data-datasource');
-    fetch(url).then(function(r) { return r.json(); })
-      .then(function(data) {
-        var rows = Array.isArray(data) ? data : (data.data || data.items || data.rows || []);
-        var tbody = table.querySelector('tbody');
-        if (!tbody || rows.length === 0) {
-          if (tbody) tbody.innerHTML = '<tr><td colspan="99" class="dsl-table-empty">暂无数据</td></tr>';
-          return;
-        }
-        var cols = table.querySelectorAll('th');
-        var colKeys = [];
-        cols.forEach(function(th) {
-          var sortBtn = th.querySelector('.dsl-sort-btn');
-          colKeys.push(sortBtn ? sortBtn.getAttribute('onclick').match(/'([^']+)'/)[1] : null);
-        });
-        tbody.innerHTML = rows.map(function(row) {
-          return '<tr>' + colKeys.map(function(key) {
-            var val = key ? (row[key] != null ? row[key] : '') : '';
-            return '<td>' + (typeof val === 'boolean' ? (val ? '是' : '否') : String(val)) + '</td>';
-          }).join('') + '</tr>';
-        }).join('');
-      })
-      .catch(function() {
-        var tbody = table.querySelector('tbody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="99" class="dsl-table-error">加载失败</td></tr>';
-      });
-  });
-
-  // Init collapsible sections
-  document.querySelectorAll('[data-collapsed="true"]').forEach(function(el) {
-    el.querySelectorAll('.dsl-card-body, .dsl-card-footer, .dsl-box-children').forEach(function(child) {
-      child.style.display = 'none';
-    });
-  });
-});
+${RUNTIME_JS}
 </script>
 </body>
 </html>`

@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/server/index.ts",
-    "build": "tsc --noEmit && tsx src/server/index.ts",
-    "build:static": "tsx src/compiler/compile.ts --output",
+    "dev": "npm run build:runtime && tsx src/server/index.ts",
+    "build": "npm run build:runtime && tsc --noEmit && tsx src/server/index.ts",
+    "build:static": "npm run build:runtime && tsx src/compiler/compile.ts --output",
+    "build:runtime": "tsx scripts/build-runtime.ts",
     "typecheck": "tsc --noEmit"
   },
   "bin": {
@@ -20,7 +21,9 @@
   ],
   "dependencies": {
     "@types/express": "^5.0.6",
+    "esbuild": "^0.25.0",
     "express": "^5.2.1",
+    "katex": "^0.16.11",
     "react": "18.2.0",
     "react-dom": "18.2.0"
   },
