@@ -9,6 +9,15 @@
     "build:static": "tsx src/compiler/compile.ts --output",
     "typecheck": "tsc --noEmit"
   },
+  "bin": {
+    "declaro": "./bin/declaro.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "package.json",
+    "tsconfig.json"
+  ],
   "dependencies": {
     "@types/express": "^5.0.6",
     "express": "^5.2.1",
