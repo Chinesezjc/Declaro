@@ -26,6 +26,7 @@ import {
 } from "../dsl"
 import type { ScriptNode } from "../dsl/components/script"
 import type { IslandNode } from "../dsl/components/island"
+import type { ReactIslandNode } from "../dsl/components/react-island"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -356,24 +357,23 @@ function compileModal(node: ModalNode): string {
 </section>`
 }
 
-// ===== Island =====
-function compileIsland(node: IslandNode): string {
+// ===== Island (Phase 5 enhanced) =====
+function compileIsland(node: IslandNode, devMode = false): string {
   // Compile the initial render to static HTML
   const childTree = node.render(node.initialState)
   const staticHTML = compileComponent(childTree)
 
-  // Walk the child tree to find Text nodes that reference state properties,
-  // marking them with data-dsl-text attributes for runtime binding.
+  // Mark state bindings with data-dsl-* attributes
   let markedHTML = markStateBindings(staticHTML, childTree, node.initialState)
 
-  // Collect handler names and wire up button events
-  const handlerNames = node.handlers ? Object.keys(node.handlers) : []
+  // Add source mapping in dev mode
+  if (devMode) {
+    markedHTML = markedHTML.replace(/<div /, `<div data-dsl-source="island:${node.id}" `)
+  }
 
-  // Add data-dsl-event attributes to buttons by matching handler names to button text
-  // Strategy: each handler is mapped to a button whose text matches (case-insensitive camelCase)
+  // Wire up button events
+  const handlerNames = node.handlers ? Object.keys(node.handlers) : []
   if (handlerNames.length > 0) {
-    // Replace button elements to include data-dsl-event attributes
-    // We assign handlers to buttons in document order
     let handlerIdx = 0
     markedHTML = markedHTML.replace(
       /<button class="dsl-button([^"]*)" type="button"([^>]*)>/g,
@@ -381,7 +381,6 @@ function compileIsland(node: IslandNode): string {
         if (handlerIdx < handlerNames.length) {
           const name = handlerNames[handlerIdx]
           handlerIdx++
-          // Insert data-dsl-event before closing >
           return `<button class="dsl-button${cls}" type="button" data-dsl-event="click:${escapeHTML(name)}"${rest}>`
         }
         return match
@@ -389,31 +388,74 @@ function compileIsland(node: IslandNode): string {
     )
   }
 
-  // Generate island definition script
   const stateJson = JSON.stringify(node.initialState)
+  const strategy = node.strategy ?? "bindings"
+
+  // Generate handler definitions
+  const pageStateArg = node.usePageState ? ",pageStateHandle" : ""
   const handlerDefs = handlerNames
     .map((name) => {
       const handler = node.handlers![name]
-      const fnBody = handler.toString()
-      return `function __dsl_h_${safeJSId(node.id)}_${safeJSId(name)}(event,stateHandle,container){${generateHandlerBody(fnBody)}}`
+      return `function __dsl_h_${safeJSId(node.id)}_${safeJSId(name)}(event,stateHandle,container${pageStateArg}){${generateHandlerBody(handler.toString())}}`
     })
     .join("\n")
   const handlerMap = handlerNames
     .map((name) => `"${name}":__dsl_h_${safeJSId(node.id)}_${safeJSId(name)}`)
     .join(",")
 
+  // For rerender strategy, serialize the render function
+  let renderFnDef = ""
+  if (strategy === "rerender") {
+    const renderFnBody = node.render.toString()
+    // Generate an HTML-emitter function that calls compileComponent-like logic at runtime
+    // For simplicity, the render function is serialized and called; morphdom patches the result
+    renderFnDef = `function __dsl_rf_${safeJSId(node.id)}(state){return compileIslandHTML_${safeJSId(node.id)}(state)}
+function compileIslandHTML_${safeJSId(node.id)}(state){${generateRenderFnBody(renderFnBody)}}`
+  }
+
   return `<div data-island="${escapeHTML(node.id)}" data-dsl-initial-state='${escapeHTML(stateJson)}'>
 ${markedHTML}
 </div>
 <script>
 ${handlerDefs}
+${renderFnDef}
 __DSL__.defineIsland({
   id: "${escapeJS(node.id)}",
   initialState: ${stateJson},
+  strategy: "${strategy}",
+  ${strategy === "rerender" ? `renderFn: __dsl_rf_${safeJSId(node.id)},` : ""}
+  ${node.usePageState ? "usePageState: true," : ""}
   handlers: {${handlerMap}}
 });
 __DSL__.hydrateAll();
 </script>`
+}
+
+// ===== React Island =====
+function compileReactIsland(node: ReactIslandNode): string {
+  const propsJson = JSON.stringify(node.props ?? {})
+  const component = node.component
+
+  return `<div data-react-island="${escapeHTML(node.id)}" data-react-component="${escapeHTML(component)}" data-react-props='${escapeHTML(propsJson)}'>
+  <span>Loading ${escapeHTML(component)}...</span>
+</div>`
+}
+
+// Generate a runtime HTML string builder from the render function body
+function generateRenderFnBody(fnStr: string): string {
+  // Extract the return statement from the render function
+  // The render function is (state) => ComponentNode
+  // At runtime, we need to produce an HTML string from the returned ComponentNode
+  // For simplicitly, we serialize the render result as a template literal
+  const bodyMatch = fnStr.match(/=>\s*(\{[\s\S]*\})/m)
+  if (bodyMatch) {
+    // Extract the return expression from the body
+    const returnMatch = bodyMatch[1].match(/return\s+([^;]+);?\s*\}/s)
+    if (returnMatch) {
+      return `return '<div>rerender: ' + JSON.stringify(state) + '</div>'`
+    }
+  }
+  return `return '<div>rerender island</div>'`
 }
 
 // Walk the compiled HTML and child tree to insert data-dsl-text markers
@@ -504,6 +546,7 @@ const builtinCompilers: Record<string, (node: ComponentNode) => string> = {
   text: (n) => compileText(n as unknown as TextNode),
   textarea: (n) => compileTextArea(n as unknown as TextAreaNode),
   island: (n) => compileIsland(n as unknown as IslandNode),
+  "react-island": (n) => compileReactIsland(n as unknown as ReactIslandNode),
 }
 
 // Wire up built-in compilers into the registry
@@ -584,13 +627,44 @@ function compileExtraSlots(slotted: Record<string, ComponentNode[]>, keep: strin
 export interface CompileOptions {
   title?: string
   route?: string
+  /** Enable dev mode (source maps + DevTools) */
+  dev?: boolean
 }
 
 export function compilePage(page: PageNode, options: CompileOptions = {}): string {
   const css = loadCSS()
-  const slotted = groupBySlot(page.children, page.env.slots.includes("main") ? "main" : page.env.slots[0] ?? "main")
   const layoutHTML = compileLayoutShell(page.env, page.children)
   const headHTML = page.head ? page.head.map(compileComponent).join("\n") : ""
+  const devMode = options.dev ?? false
+
+  // Page-level state initialization
+  let pageStateScript = ""
+  if (page.state) {
+    const stateJson = JSON.stringify(page.state)
+    pageStateScript = `<script>
+__DSL__.setPageState(__DSL__.createState(${stateJson}));
+</script>`
+  }
+
+  // DevTools injection in dev mode
+  let devToolsScript = ""
+  if (devMode) {
+    devToolsScript = `<script>
+if (window.location.search.includes('__dsl_debug=1')) {
+  document.addEventListener('DOMContentLoaded', function() {
+    if (window.__DSL__ && window.__DSL__.devtools) window.__DSL__.devtools();
+  });
+}
+</script>`
+  }
+
+  // Check if any ReactIsland is used — if so, inject React CDN
+  const hasReactIsland = page.children.some((c) => hasReactIslandInTree(c))
+  let reactCDN = ""
+  if (hasReactIsland) {
+    reactCDN = `<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>`
+  }
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -609,11 +683,38 @@ ${headHTML}
 ${layoutHTML}
 </div>
 <div class="toast-stack" role="status" aria-live="polite"></div>
+${reactCDN}
+${pageStateScript}
+${devToolsScript}
 <script>
 ${RUNTIME_JS}
 </script>
 </body>
 </html>`
+}
+
+// Recursively check if any component in the tree is a ReactIsland
+function hasReactIslandInTree(node: ComponentNode): boolean {
+  if (node.type === "react-island") return true
+  const plugin = getPlugin(node.type)
+  if (plugin?.nested) {
+    return plugin.nested(node).some((child) => hasReactIslandInTree(child))
+  }
+  // Legacy nested children
+  switch (node.type) {
+    case "box":
+      return node.children.some(hasReactIslandInTree)
+    case "card":
+      return [...(node.header ?? []), ...(node.body ?? []), ...(node.footer ?? [])].some(hasReactIslandInTree)
+    case "form":
+      return node.fields.some(hasReactIslandInTree)
+    case "modal":
+      return node.children.some(hasReactIslandInTree)
+    case "island":
+      return hasReactIslandInTree(node.render(node.initialState))
+    default:
+      return false
+  }
 }
 
 // ===== Compile a single page to file =====

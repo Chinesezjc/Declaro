@@ -12,6 +12,7 @@ Declaro — TypeScript 嵌入式 UI DSL 编译器
   declaro compile --all        编译所有注册页面 → dist/
   declaro add <package>        安装 Declaro 插件包
   declaro deploy [--target=vercel|cloudflare|node]  部署到生产环境
+  declaro adapt <package>      将 React 组件包装为 Declaro 插件
   declaro --help               显示帮助
 
 示例:
@@ -21,6 +22,7 @@ Declaro — TypeScript 嵌入式 UI DSL 编译器
   declaro compile --all
   declaro add declaro-chart
   declaro deploy --target=vercel
+  declaro adapt react-datepicker
 `
 
 async function main() {
@@ -151,6 +153,12 @@ async function main() {
   if (cmd === "deploy") {
     const { deployCommand } = await import("./cli/deploy.js")
     await deployCommand(args.slice(1))
+    return
+  }
+
+  if (cmd === "adapt") {
+    const { adaptCommand } = await import("./cli/adapt.js")
+    await adaptCommand(args.slice(1))
     return
   }
 

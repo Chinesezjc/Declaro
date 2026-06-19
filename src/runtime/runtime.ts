@@ -1,10 +1,9 @@
 // Declaro client runtime entry point.
 // Bundled by esbuild into a single IIFE and injected by the compiler.
-// Exposes all runtime APIs under window.__DSL__.
 
 import { createState } from "./state"
-import { patchElement, bindIslandEvents, syncTextBindings, escapeHTML } from "./dom"
-import { defineIsland, hydrateAll, getIslandState } from "./island"
+import { patchElement, bindIslandEvents, syncBindings, syncTextBindings, escapeHTML } from "./dom"
+import { defineIsland, hydrateAll, getIslandState, setPageState } from "./island"
 import {
   toggleCollapse,
   showToast,
@@ -18,21 +17,26 @@ import {
   initLegacy,
   exposeGlobals,
 } from "./legacy"
+// Phase 5: React Bridge + DevTools
+import "./react-bridge"
+import "./devtools"
 
 const DSL = {
-  // State
+  // State (Phase 5: derive + persist)
   createState,
 
-  // DOM
+  // DOM (Phase 5: syncBindings + morphdom patchElement)
   patchElement,
   bindIslandEvents,
+  syncBindings,
   syncTextBindings,
   escapeHTML,
 
-  // Islands
+  // Islands (Phase 5: rerender + pageState)
   defineIsland,
   hydrateAll,
   getIslandState,
+  setPageState,
 
   // Legacy
   toggleCollapse,

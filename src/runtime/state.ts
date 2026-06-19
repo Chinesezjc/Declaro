@@ -1,29 +1,56 @@
 // Reactive state system for Declaro islands.
-// Uses ES6 Proxy for shallow reactivity.
+// Phase 5: adds derive() + persist options.
 
 export interface StateHandle<T extends Record<string, unknown>> {
-  /** The reactive proxy object. Reading returns current value,
-   *  writing notifies all subscribers synchronously. */
   state: T
-  /** Register a listener. Returns unsubscribe function. */
   subscribe(listener: () => void): () => void
-  /** Batch-update multiple properties, one notification. */
   set(partial: Partial<T>): void
-  /** Current state snapshot (non-reactive plain object). */
   getSnapshot(): T
+  /** Create a derived (computed) state handle. Auto-updates when source changes. */
+  derive<R extends Record<string, unknown>>(name: string, fn: (s: T) => R): StateHandle<R>
 }
 
 interface StateInternals<T extends Record<string, unknown>> {
   data: T
   listeners: Set<() => void>
   pending: boolean
+  persistKey: string | null
 }
 
-export function createState<T extends Record<string, unknown>>(initial: T): StateHandle<T> {
+export type StateOptions = {
+  /** Persist state to localStorage or sessionStorage */
+  persist?: "localStorage" | "sessionStorage"
+}
+
+export function createState<T extends Record<string, unknown>>(
+  initial: T,
+  options: StateOptions = {},
+): StateHandle<T> {
+  // Load persisted state if available
+  const storage = options.persist === "localStorage" ? localStorage
+    : options.persist === "sessionStorage" ? sessionStorage
+    : null
+  const persistKey = storage ? `__dsl_state_${window.location.pathname}` : null
+
+  let initData = { ...initial } as T
+  if (storage && persistKey) {
+    try {
+      const saved = storage.getItem(persistKey)
+      if (saved) initData = { ...initData, ...JSON.parse(saved) }
+    } catch { /* use default */ }
+  }
+
   const internals: StateInternals<T> = {
-    data: { ...initial } as T,
+    data: initData,
     listeners: new Set(),
     pending: false,
+    persistKey,
+  }
+
+  const persist = (): void => {
+    if (persistKey && storage) {
+      try { storage.setItem(persistKey, JSON.stringify(internals.data)) } catch { /* quota exceeded */ }
+    }
   }
 
   const notify = (): void => {
@@ -32,6 +59,7 @@ export function createState<T extends Record<string, unknown>>(initial: T): Stat
     queueMicrotask(() => {
       internals.pending = false
       internals.listeners.forEach((fn) => fn())
+      persist()
     })
   }
 
@@ -51,8 +79,7 @@ export function createState<T extends Record<string, unknown>>(initial: T): Stat
       return true
     },
     get(_target, prop) {
-      const key = prop as keyof T
-      return internals.data[key]
+      return internals.data[prop as keyof T]
     },
   }) as T
 
@@ -76,6 +103,14 @@ export function createState<T extends Record<string, unknown>>(initial: T): Stat
     },
     getSnapshot(): T {
       return { ...internals.data }
+    },
+    derive<R extends Record<string, unknown>>(_name: string, fn: (s: T) => R): StateHandle<R> {
+      const derived = createState(fn(internals.data))
+      this.subscribe(() => {
+        const newVal = fn(internals.data)
+        derived.set(newVal)
+      })
+      return derived
     },
   }
 }

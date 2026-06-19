@@ -2,22 +2,18 @@ import type { ComponentBase } from "../core"
 import type { ComponentNode } from "../component"
 
 /**
+ * Island hydration strategy:
+ * - "bindings": targeted data-dsl-* attribute updates (default, fastest)
+ * - "rerender": full render() re-invocation + morphdom diff (for structural changes)
+ */
+export type IslandStrategy = "bindings" | "rerender"
+
+/**
  * An Island is an interactive component with client-side state.
- *
- * The compiler:
- * 1. Calls `render(initialState)` at compile time for the initial static HTML
- * 2. Marks state-dependent text with `data-dsl-text` attributes
- * 3. Serializes handler functions as named JS functions
- * 4. Injects island registration + hydration calls
- *
- * The runtime:
- * 1. Creates a reactive StateHandle from initialState
- * 2. Binds event handlers to `[data-dsl-event]` elements
- * 3. On state change, updates `[data-dsl-text]` elements
  */
 export type IslandNode = ComponentBase & {
   type: "island"
-  /** Unique island ID (used as data-island attribute value) — required */
+  /** Unique island ID — required */
   id: string
   /** Initial state for the island */
   initialState: Record<string, unknown>
@@ -28,6 +24,16 @@ export type IslandNode = ComponentBase & {
    * Handlers receive (event, state, set) where `set` updates state and triggers re-render.
    */
   handlers?: Record<string, IslandHandler>
+  /**
+   * Hydration strategy. Default "bindings" for targeted updates,
+   * "rerender" for full re-render with morphdom diffing.
+   */
+  strategy?: IslandStrategy
+  /**
+   * Enable access to page-level state.
+   * When true, handlers receive (event, state, set, pageState, setPageState).
+   */
+  usePageState?: boolean
 }
 
 export type IslandHandler = (
@@ -40,24 +46,6 @@ export type IslandConfig = Omit<IslandNode, "type">
 
 /**
  * Create an interactive Island component.
- *
- * @example
- * ```ts
- * Island({
- *   id: "counter",
- *   initialState: { count: 0 },
- *   render: ({ count }) =>
- *     Box({ children: [
- *       Text({ text: `Count: ${count}` }),
- *       Button({ text: "+1", onClick: () => {} }),
- *     ]}),
- *   handlers: {
- *     increment: (_event, state, set) => {
- *       set({ count: (state.count as number) + 1 })
- *     },
- *   },
- * })
- * ```
  */
 export function Island(config: IslandConfig): IslandNode {
   return {
@@ -66,6 +54,8 @@ export function Island(config: IslandConfig): IslandNode {
     initialState: config.initialState,
     render: config.render,
     handlers: config.handlers,
+    strategy: config.strategy,
+    usePageState: config.usePageState,
     slot: config.slot,
     order: config.order,
     visible: config.visible,

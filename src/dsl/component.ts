@@ -15,6 +15,7 @@ import type { TableNode } from "./components/table"
 import type { TextNode } from "./components/text"
 import type { TextAreaNode } from "./components/textarea"
 import type { IslandNode } from "./components/island"
+import type { ReactIslandNode } from "./components/react-island"
 import { type PluginNode, getPlugin } from "./plugin"
 
 export type ComponentNode =
@@ -34,6 +35,7 @@ export type ComponentNode =
   | CardNode
   | ModalNode
   | IslandNode
+  | ReactIslandNode
   | PluginNode
 
 export type SerializableIR =

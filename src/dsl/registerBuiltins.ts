@@ -18,6 +18,7 @@ import type { TableNode } from "./components/table"
 import type { TextNode } from "./components/text"
 import type { TextAreaNode } from "./components/textarea"
 import type { IslandNode } from "./components/island"
+import type { ReactIslandNode } from "./components/react-island"
 import type { ComponentNode } from "./component"
 
 // Compile functions — imported lazily to avoid circular deps.
@@ -52,3 +53,4 @@ defineComponent({ type: "table", compile: (n) => compile("table", n), nested: (n
 defineComponent({ type: "text", compile: (n) => compile("text", n), nested: (n) => [...((n as TextNode).titleActions ?? [])] })
 defineComponent({ type: "textarea", compile: (n) => compile("textarea", n), nested: empty })
 defineComponent({ type: "island", compile: (n) => compile("island", n), nested: (n) => [(n as IslandNode).render((n as IslandNode).initialState)] })
+defineComponent({ type: "react-island", compile: (n) => compile("react-island", n), nested: (_n) => [] })

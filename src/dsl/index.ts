@@ -20,6 +20,7 @@ export * from "./components/table"
 export * from "./components/text"
 export * from "./components/textarea"
 export * from "./components/island"
+export * from "./components/react-island"
 
 // Side-effect: register all built-in components in the plugin registry
 import "./registerBuiltins"
