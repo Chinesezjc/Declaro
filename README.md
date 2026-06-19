@@ -1,4 +1,4 @@
-# HCI UI DSL
+# Declaro
 
 一个基于 TypeScript 的嵌入式 UI DSL。项目成员可以用函数调用和对象定义页面结构、布局区域、组件属性、事件行为和数据源，不需要直接写 React 组件。
 
