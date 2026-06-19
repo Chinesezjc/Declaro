@@ -2,6 +2,7 @@ import type React from "react"
 import { createElement } from "react"
 import katex from "katex"
 import type { ComponentNode } from "../../dsl"
+import { getPlugin } from "../../dsl/plugin"
 import { withSelfAlignment } from "./alignment"
 import type { ParentSizing, RenderContext } from "./types"
 import { canRenderComponent } from "./visibility"
@@ -83,10 +84,24 @@ function renderComponentContent(component: ComponentNode, ctx: RenderContext): R
         dangerouslySetInnerHTML: { __html: katexHtml },
       })
     }
+    case "script":
+      // Script nodes are for <head>, don't render in body
+      return null
     case "text":
       return <RenderText key={component.id ?? component.text} node={component} ctx={ctx} renderNode={renderComponent} />
-    default:
+    default: {
+      // Plugin component — render as HTML wrapper
+      const plugin = getPlugin(component.type)
+      if (plugin) {
+        const html = plugin.compile(component)
+        return createElement("span", {
+          key: component.id ?? component.type,
+          className: `dsl-plugin dsl-plugin-${component.type}`,
+          dangerouslySetInnerHTML: { __html: html },
+        })
+      }
       return null
+    }
   }
 }
 

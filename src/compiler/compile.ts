@@ -21,7 +21,10 @@ import {
   type TextNode,
   type Action,
   groupBySlot,
+  getPlugin,
+  registerBuiltinCompilers,
 } from "../dsl"
+import type { ScriptNode } from "../dsl/components/script"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -304,6 +307,46 @@ function compileKatex(node: KatexNode): string {
   }
 }
 
+// ===== Script =====
+function compileScript(node: ScriptNode): string {
+  if (node.inline) {
+    const typeAttr = node.type_ ? ` type="${escapeHTML(node.type_)}"` : ""
+    return `<script${typeAttr}>${node.inline}</script>`
+  }
+  if (node.src) {
+    const attrs = [
+      `src="${escapeHTML(node.src)}"`,
+      node.async ? "async" : "",
+      node.defer ? "defer" : "",
+      node.type_ ? `type="${escapeHTML(node.type_)}"` : "",
+    ].filter(Boolean).join(" ")
+    return `<script ${attrs}></script>`
+  }
+  return ""
+}
+
+// ===== Compile helpers =====
+const builtinCompilers: Record<string, (node: ComponentNode) => string> = {
+  box: (n) => compileBox(n as BoxNode),
+  button: (n) => compileButton(n as BoxNode as ButtonNode),
+  card: (n) => compileCard(n as BoxNode as CardNode),
+  form: (n) => compileForm(n as BoxNode as FormNode),
+  html: (n) => (n as unknown as { html: string }).html,
+  input: (n) => compileInput(n as BoxNode as InputNode),
+  katex: (n) => compileKatex(n as BoxNode as KatexNode),
+  list: (n) => compileList(n as BoxNode as ListNode),
+  modal: (n) => compileModal(n as BoxNode as ModalNode),
+  script: (n) => compileScript(n as BoxNode as ScriptNode),
+  select: (n) => compileSelect(n as BoxNode as SelectNode),
+  slider: (n) => compileSlider(n as BoxNode as SliderNode),
+  table: (n) => compileTable(n as BoxNode as TableNode),
+  text: (n) => compileText(n as BoxNode as TextNode),
+  textarea: (n) => compileTextArea(n as BoxNode as TextAreaNode),
+}
+
+// Wire up built-in compilers into the registry
+registerBuiltinCompilers(builtinCompilers)
+
 // ===== Dispatch =====
 function compileComponent(node: ComponentNode): string {
   const inner = compileComponentInner(node)
@@ -311,23 +354,9 @@ function compileComponent(node: ComponentNode): string {
 }
 
 function compileComponentInner(node: ComponentNode): string {
-  switch (node.type) {
-    case "text": return compileText(node)
-    case "box": return compileBox(node)
-    case "card": return compileCard(node)
-    case "button": return compileButton(node)
-    case "html": return node.html
-    case "input": return compileInput(node)
-    case "katex": return compileKatex(node)
-    case "select": return compileSelect(node)
-    case "slider": return compileSlider(node)
-    case "textarea": return compileTextArea(node)
-    case "form": return compileForm(node)
-    case "table": return compileTable(node)
-    case "list": return compileList(node)
-    case "modal": return compileModal(node)
-    default: return ""
-  }
+  const plugin = getPlugin(node.type)
+  if (plugin) return plugin.compile(node)
+  return ""
 }
 
 // ===== Layout shell =====
@@ -399,6 +428,7 @@ export function compilePage(page: PageNode, options: CompileOptions = {}): strin
   const css = loadCSS()
   const slotted = groupBySlot(page.children, page.env.slots.includes("main") ? "main" : page.env.slots[0] ?? "main")
   const layoutHTML = compileLayoutShell(page.env, page.children)
+  const headHTML = page.head ? page.head.map(compileComponent).join("\n") : ""
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -410,6 +440,7 @@ export function compilePage(page: PageNode, options: CompileOptions = {}): strin
 <style>
 ${css}
 </style>
+${headHTML}
 </head>
 <body>
 <div class="dsl-page dsl-layout-${page.env.layout}" data-page-id="${page.id}" data-env-id="${page.env.id}">

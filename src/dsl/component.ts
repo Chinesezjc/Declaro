@@ -8,11 +8,13 @@ import type { InputNode } from "./components/input"
 import type { KatexNode } from "./components/katex"
 import type { ListNode } from "./components/list"
 import type { ModalNode } from "./components/modal"
+import type { ScriptNode } from "./components/script"
 import type { SelectNode } from "./components/select"
 import type { SliderNode } from "./components/slider"
 import type { TableNode } from "./components/table"
 import type { TextNode } from "./components/text"
 import type { TextAreaNode } from "./components/textarea"
+import { type PluginNode, getPlugin } from "./plugin"
 
 export type ComponentNode =
   | TextNode
@@ -21,6 +23,7 @@ export type ComponentNode =
   | HtmlNode
   | InputNode
   | KatexNode
+  | ScriptNode
   | SelectNode
   | SliderNode
   | TextAreaNode
@@ -29,6 +32,7 @@ export type ComponentNode =
   | TableNode
   | CardNode
   | ModalNode
+  | PluginNode
 
 export type SerializableIR =
   | null
@@ -120,6 +124,9 @@ function validateSlotList(env: EnvNode, children: readonly ComponentNode[], path
 }
 
 function getNestedChildren(component: ComponentNode): ComponentNode[] {
+  const plugin = getPlugin(component.type)
+  if (plugin?.nested) return plugin.nested(component)
+  // Legacy hardcoded fallback for built-ins without nested registered
   switch (component.type) {
     case "box":
       return [...(component.titleActions ?? []), ...component.children]
