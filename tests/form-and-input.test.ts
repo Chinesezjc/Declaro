@@ -5,7 +5,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { Button, Env, Form, Input, Page, Select, type ComponentNode } from "../src/dsl"
+import { Button, Env, Form, Input, Page, Select, TextArea, type ComponentNode } from "../src/dsl"
 import { compilePage } from "../src/compiler/compile"
 
 function compileChildren(children: ComponentNode[]): string {
@@ -209,4 +209,38 @@ test("a form id and field names are escaped", () => {
     assert.doesNotMatch(tag, /<b>/)
     assert.match(tag, /&lt;b&gt;/)
   }
+})
+
+test("a textarea can be wired to an island handler", () => {
+  // Without this a multi-line field inside an island can be typed into but never
+  // read: an island only sees its controls through the handlers
+  // bindIslandEvents dispatches, and a textarea had no way to name one.
+  const html = compileChildren([
+    TextArea({ name: "body", islandHandler: "edit", slot: "main" }),
+  ])
+  assert.match(html, /<textarea name="body"[^>]* data-dsl-event="input:edit"/)
+})
+
+test("a textarea's island event can be change instead of input", () => {
+  // A field the island only needs the final value of should not fire per
+  // keystroke.
+  const html = compileChildren([
+    TextArea({ name: "cidrs", islandHandler: "edit", islandEvent: "change", slot: "main" }),
+  ])
+  assert.match(html, /<textarea name="cidrs"[^>]* data-dsl-event="change:edit"/)
+})
+
+test("a textarea with no island handler emits no event attribute", () => {
+  const html = compileChildren([TextArea({ name: "plain", slot: "main" })])
+  const tag = html.match(/<textarea[^>]*>/)![0]
+  assert.doesNotMatch(tag, /data-dsl-event/)
+})
+
+test("a textarea's name and handler are escaped", () => {
+  const html = compileChildren([
+    TextArea({ name: 'n"><b>', islandHandler: 'h"><b>', slot: "main" }),
+  ])
+  const tag = html.match(/<textarea[^>]*>/)![0]
+  assert.doesNotMatch(tag, /<b>/)
+  assert.match(tag, /&lt;b&gt;/)
 })

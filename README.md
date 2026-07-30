@@ -323,6 +323,8 @@ Button({ text: "停止", islandHandler: "stop" })
 Input({ name: "uid", islandHandler: "onUid" })                      // 默认 input 事件
 Select({ name: "server", islandHandler: "onServer" })               // 默认 change 事件
 Input({ name: "q", islandHandler: "onEnter", islandEvent: "keydown" })
+TextArea({ name: "body", islandHandler: "onBody" })                 // 默认 input 事件
+TextArea({ name: "cidrs", islandHandler: "onCidrs", islandEvent: "change" })
 ```
 
 没写 `islandHandler` 的按钮不绑定任何 handler。

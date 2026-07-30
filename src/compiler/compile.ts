@@ -468,9 +468,13 @@ function compileTextArea(node: TextAreaNode): string {
   const required = node.required ? " required" : ""
   const placeholder = node.placeholder ? ` placeholder="${escapeHTML(node.placeholder)}"` : ""
   const rows = node.rows ? ` rows="${node.rows}"` : ""
+  // A textarea is read by its island the same way an input is, so it takes the
+  // same wiring. "input" is the default because that is what a field whose every
+  // keystroke matters needs, and it matches Input.
+  const event = islandEventAttr(node.islandHandler, node.islandEvent, "input")
   return `<label class="${classList(node, "dsl-field")}"${idOnly(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
-  <textarea name="${node.name}"${placeholder}${required}${rows}${runtimeAttrs(node)}></textarea>
+  <textarea name="${escapeHTML(node.name)}"${placeholder}${required}${rows}${event}${runtimeAttrs(node)}></textarea>
 </label>`
 }
 
