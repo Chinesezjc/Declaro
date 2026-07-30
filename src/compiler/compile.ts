@@ -255,7 +255,12 @@ function compileCard(node: CardNode): string {
 </section>`
 }
 
-function compileButton(node: ButtonNode): string {
+/**
+ * @param buttonType value for the HTML type attribute. Buttons default to
+ *   "button" so a stray one cannot submit an enclosing form; a Form's own submit
+ *   button is compiled with "submit".
+ */
+function compileButton(node: ButtonNode, buttonType: "button" | "submit" = "button"): string {
   const variant = node.variant ?? "secondary"
   const disabled = node.disabled ? " disabled" : ""
   const onClick = actionToJS(node.onClick)
@@ -263,7 +268,7 @@ function compileButton(node: ButtonNode): string {
   // Island wiring is declared per button, so the handler a button triggers does
   // not depend on where the button sits in the rendered tree.
   const eventAttr = islandEventAttr(node.islandHandler, undefined, "click")
-  return `<button class="dsl-button dsl-button-${variant}"${idAttr(node)} type="button"${disabled}${eventAttr}${onclickAttr}>${escapeHTML(node.text)}</button>`
+  return `<button class="dsl-button dsl-button-${variant}"${idAttr(node)} type="${buttonType}"${disabled}${eventAttr}${onclickAttr}>${escapeHTML(node.text)}</button>`
 }
 
 /**
@@ -279,14 +284,33 @@ function islandEventAttr(
   return ` data-dsl-event="${escapeHTML(event ?? defaultEvent)}:${escapeHTML(handler)}"`
 }
 
+/** Emit `name="value"` when the value is set, escaped. Omit the attribute otherwise. */
+function attr(name: string, value: string | undefined): string {
+  return value ? ` ${name}="${escapeHTML(value)}"` : ""
+}
+
 function compileInput(node: InputNode): string {
   const required = node.required ? " required" : ""
-  const placeholder = node.placeholder ? ` placeholder="${escapeHTML(node.placeholder)}"` : ""
-  const value = node.defaultValue ? ` value="${escapeHTML(node.defaultValue)}"` : ""
+  const placeholder = attr("placeholder", node.placeholder)
+  // A file input cannot carry a value: the browser rejects it, and the attribute
+  // would be a way to claim a local path the user never picked.
+  const isFile = node.inputType === "file"
+  const value = isFile ? "" : attr("value", node.defaultValue)
   const event = islandEventAttr(node.islandHandler, node.islandEvent, "input")
+  const type = attr("type", node.inputType)
+  const accept = isFile ? attr("accept", node.accept) : ""
+  const inputMode = attr("inputmode", node.inputMode)
+  const pattern = attr("pattern", node.pattern)
+  const autoComplete = attr("autocomplete", node.autoComplete)
+  const input = `<input name="${escapeHTML(node.name)}"${type}${placeholder}${required}${value}${accept}${inputMode}${pattern}${autoComplete}${event}>`
+
+  // A hidden input has nothing to label, and the dsl-field wrapper would leave a
+  // gap in the form's field grid.
+  if (node.inputType === "hidden") return input
+
   return `<label class="dsl-field"${idAttr(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
-  <input name="${node.name}"${placeholder}${required}${value}${event}>
+  ${input}
 </label>`
 }
 
@@ -334,8 +358,20 @@ function compileTextArea(node: TextAreaNode): string {
 
 function compileForm(node: FormNode): string {
   const fields = node.fields.map(compileComponent).join("")
-  const submitBtn = node.submitButton ? compileButton(node.submitButton) : `<button class="dsl-button dsl-button-primary" type="submit">提交</button>`
+  const submitBtn = node.submitButton ? compileButton(node.submitButton, "submit") : `<button class="dsl-button dsl-button-primary" type="submit">提交</button>`
   const onSignal = node.onSignal ? ` data-signal="${escapeJS(node.onSignal.toString().slice(0, 200))}"` : ""
+
+  // A form with islandHandler set submits through its Island instead of the
+  // built-in /api/form/<id> POST, so it must not also carry that action: if the
+  // handler throws before preventDefault(), the built-in onsubmit would navigate
+  // away and the multipart body the handler was assembling would be lost.
+  if (node.islandHandler) {
+    const event = islandEventAttr(node.islandHandler, "submit", "submit")
+    return `<form class="dsl-form" id="${escapeHTML(node.id)}"${event}${onSignal}>
+  <div class="dsl-form-fields">${fields}</div>
+  <div class="dsl-form-actions">${submitBtn}</div>
+</form>`
+  }
 
   return `<form class="dsl-form" id="${node.id}" method="post" action="/api/form/${node.id}" onsubmit="handleFormSubmit(event,'${node.id}')"${onSignal}>
   <div class="dsl-form-fields">${fields}</div>

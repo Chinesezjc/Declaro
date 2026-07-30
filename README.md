@@ -324,6 +324,23 @@ Input({ name: "q", islandHandler: "onEnter", islandEvent: "keydown" })
 
 没写 `islandHandler` 的按钮不绑定任何 handler。
 
+`Form` 也接受 `islandHandler`，用于表单需要自己构造请求的场合（multipart 上传、非 `/api/form/<id>` 的端点、自定义错误渲染）。设置后编译出的 `<form>` 不再带内置的 `action`/`method`/`onsubmit`，handler 需要自己调 `preventDefault()`：
+
+```ts
+Form({
+  id: "upload",
+  islandHandler: "submit",
+  fields: [
+    Select({ name: "server", options: [...] }),
+    Input({ name: "uid", inputMode: "numeric", pattern: "[0-9]+", required: true }),
+    Input({ name: "file", inputType: "file", accept: ".bin", required: true }),
+  ],
+  submitButton: Button({ text: "开始上传", variant: "primary" }),
+})
+```
+
+`Input` 的 `inputType` 编译为 HTML `type` 属性，另有 `accept`（仅 `file` 生效）、`inputMode`、`pattern`、`autoComplete`。不写 `inputType` 时不输出 `type` 属性。`hidden` 不套 `dsl-field` 外层，避免在字段网格里留空位。`checkbox`/`radio` 不在支持列表内：它们需要与 `dsl-field` 不同的 label 布局。
+
 ## 已知限制
 
 - Table/List 在静态模式下需要服务端提供数据 API
