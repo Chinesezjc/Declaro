@@ -330,4 +330,4 @@ Input({ name: "q", islandHandler: "onEnter", islandEvent: "keydown" })
 - IR 可导出但暂不支持反向恢复完整页面
 - 主题系统尚未独立抽象，当前样式在 `src/styles.css`
 - handler 无法引用模块作用域（见上方约定），共享逻辑需走全局命名空间
-- `npm run typecheck` 当前有 90 个既有报错，尚未清理
+- `npm run typecheck` 当前有 63 个既有报错，尚未清理
