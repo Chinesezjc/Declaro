@@ -134,10 +134,16 @@ function fillPlaceholders(fragment: DocumentFragment, item: unknown): void {
  * and `hidden` are what a table of action buttons needs: a task that is no longer
  * pending must not offer "start now", and the session you are using must not
  * offer to revoke itself.
+ *
+ * The names this turned on are recorded in data-dsl-item-attr-on, because the
+ * same element may also carry a data-dsl-attr for one of them. Both conditions
+ * disable the button and neither outranks the other, so the attribute is on when
+ * either says on; the scalar pass reads this list and leaves those names alone.
  */
 function applyItemAttrs(el: HTMLElement, resolve: (prop: string) => string): void {
   const spec = el.getAttribute("data-dsl-item-attr")
   if (!spec) return
+  const on: string[] = []
   for (const pair of spec.split(/\s+/)) {
     if (!pair) continue
     const colonIdx = pair.indexOf(":")
@@ -150,8 +156,17 @@ function applyItemAttrs(el: HTMLElement, resolve: (prop: string) => string): voi
       el.removeAttribute(attrName)
     } else {
       el.setAttribute(attrName, "")
+      on.push(attrName)
     }
   }
+  if (on.length) el.setAttribute("data-dsl-item-attr-on", on.join(" "))
+  else el.removeAttribute("data-dsl-item-attr-on")
+}
+
+/** The attribute names a row's data-dsl-item-attr has turned on. */
+function itemAttrsOn(el: HTMLElement): string[] {
+  const spec = el.getAttribute("data-dsl-item-attr-on")
+  return spec ? spec.split(/\s+/).filter(Boolean) : []
 }
 
 /**
@@ -223,6 +238,10 @@ function syncScalarBindings(root: HTMLElement, state: Record<string, unknown>): 
     if (colonIdx < 0) return
     const attrName = attr.slice(0, colonIdx)
     const rest = attr.slice(colonIdx + 1)
+    // A row's own data-dsl-item-attr may have turned this same attribute on. That
+    // is the other half of the same condition — per-row on top of per-list — so
+    // removing it here would answer only half the question.
+    const pinnedOn = itemAttrsOn(el).includes(attrName)
     // Check for "attr:key=val" pattern
     const eqIdx = rest.indexOf("=")
     if (eqIdx >= 0) {
@@ -230,14 +249,14 @@ function syncScalarBindings(root: HTMLElement, state: Record<string, unknown>): 
       const targetVal = rest.slice(eqIdx + 1)
       if (String(state[key]) === targetVal) {
         el.setAttribute(attrName, "")
-      } else {
+      } else if (!pinnedOn) {
         el.removeAttribute(attrName)
       }
     } else {
       const key = rest
       if (state[key]) {
         el.setAttribute(attrName, "")
-      } else {
+      } else if (!pinnedOn) {
         el.removeAttribute(attrName)
       }
     }

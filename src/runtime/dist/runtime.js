@@ -674,6 +674,7 @@ var __DSL_RUNTIME__ = (() => {
   function applyItemAttrs(el, resolve) {
     const spec = el.getAttribute("data-dsl-item-attr");
     if (!spec) return;
+    const on = [];
     for (const pair of spec.split(/\s+/)) {
       if (!pair) continue;
       const colonIdx = pair.indexOf(":");
@@ -686,8 +687,15 @@ var __DSL_RUNTIME__ = (() => {
         el.removeAttribute(attrName);
       } else {
         el.setAttribute(attrName, "");
+        on.push(attrName);
       }
     }
+    if (on.length) el.setAttribute("data-dsl-item-attr-on", on.join(" "));
+    else el.removeAttribute("data-dsl-item-attr-on");
+  }
+  function itemAttrsOn(el) {
+    const spec = el.getAttribute("data-dsl-item-attr-on");
+    return spec ? spec.split(/\s+/).filter(Boolean) : [];
   }
   function boundElements(scope, selector) {
     const found = Array.from(scope.querySelectorAll(selector));
@@ -721,20 +729,21 @@ var __DSL_RUNTIME__ = (() => {
       if (colonIdx < 0) return;
       const attrName = attr.slice(0, colonIdx);
       const rest = attr.slice(colonIdx + 1);
+      const pinnedOn = itemAttrsOn(el).includes(attrName);
       const eqIdx = rest.indexOf("=");
       if (eqIdx >= 0) {
         const key = rest.slice(0, eqIdx);
         const targetVal = rest.slice(eqIdx + 1);
         if (String(state[key]) === targetVal) {
           el.setAttribute(attrName, "");
-        } else {
+        } else if (!pinnedOn) {
           el.removeAttribute(attrName);
         }
       } else {
         const key = rest;
         if (state[key]) {
           el.setAttribute(attrName, "");
-        } else {
+        } else if (!pinnedOn) {
           el.removeAttribute(attrName);
         }
       }

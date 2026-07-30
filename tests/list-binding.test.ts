@@ -315,6 +315,55 @@ test("data-dsl-item-attr sets several attributes from one spec", () => {
   assert.equal(li.hasAttribute("hidden"), false)
 })
 
+test("data-dsl-item-attr and data-dsl-attr both hold the same attribute on", () => {
+  // A per-row button that is unavailable for two independent reasons carries
+  // both bindings for one attribute: the row is not in a startable state, and a
+  // request is in flight for the whole list. Neither outranks the other, so the
+  // attribute is on when either says on. The scalar pass runs after the row is
+  // built and used to remove what the row had just set, leaving every button
+  // enabled.
+  const { root } = mount(`<table><tbody id="b" data-dsl-list="rows">
+    <template data-dsl-list-item><tr><td>
+      <button data-dsl-item-attr="disabled:locked" data-dsl-attr="disabled:busy">start</button>
+    </td></tr></template>
+  </tbody></table>`)
+
+  syncBindings(root, { rows: [{ locked: "1" }, { locked: "" }], busy: false })
+  assert.deepEqual(
+    Array.from(root.querySelectorAll("button")).map((el) => el.hasAttribute("disabled")),
+    [true, false],
+    "the row's own flag survives a false per-list flag",
+  )
+
+  syncBindings(root, { rows: [{ locked: "1" }, { locked: "" }], busy: true })
+  assert.deepEqual(
+    Array.from(root.querySelectorAll("button")).map((el) => el.hasAttribute("disabled")),
+    [true, true],
+    "a true per-list flag disables the rows the row flag left enabled",
+  )
+
+  syncBindings(root, { rows: [{ locked: "1" }, { locked: "" }], busy: false })
+  assert.deepEqual(
+    Array.from(root.querySelectorAll("button")).map((el) => el.hasAttribute("disabled")),
+    [true, false],
+    "clearing the per-list flag re-enables only the rows whose own flag is off",
+  )
+})
+
+test("data-dsl-item-attr does not pin an attribute it turned off", () => {
+  // The record of what a row turned on is per render. A row whose flag went from
+  // on to off must not keep the attribute alive through the scalar pass.
+  const { root } = mount(`<ul id="l" data-dsl-list="rows">
+    <template data-dsl-list-item><li data-dsl-item-attr="hidden:gone" data-dsl-attr="hidden:all"></li></template>
+  </ul>`)
+
+  syncBindings(root, { rows: [{ gone: "1" }], all: false })
+  assert.equal(root.querySelector("#l > li")!.hasAttribute("hidden"), true)
+
+  syncBindings(root, { rows: [{ gone: "" }], all: false })
+  assert.equal(root.querySelector("#l > li")!.hasAttribute("hidden"), false)
+})
+
 test("a template with several top-level nodes marks each of them", () => {
   // A two-row template is how a table shows a detail row under each entry.
   // Wrapped in a <table>: a bare <tbody> is not allowed as a child of <body>, so
