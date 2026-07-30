@@ -429,7 +429,7 @@ function compileIsland(node: IslandNode, devMode = false): string {
   const staticHTML = compileComponent(childTree)
 
   // Mark state bindings with data-dsl-* attributes
-  let markedHTML = markStateBindings(staticHTML, childTree, node.initialState)
+  let markedHTML = markStateBindings(staticHTML, node.initialState)
 
   // Add source mapping in dev mode
   if (devMode) {
@@ -510,20 +510,36 @@ function generateRenderFnBody(fnStr: string): string {
   return `return '<div>rerender island</div>'`
 }
 
-// Walk the compiled HTML and child tree to insert data-dsl-text markers
-function markStateBindings(html: string, tree: ComponentNode, state: Record<string, unknown>): string {
-  // Find Text nodes whose text contains state property values
-  // and wrap those values in <span data-dsl-text="key">value</span>
+/**
+ * Wrap the text nodes that render an island's initial state in
+ * <span data-dsl-text="key">, so the runtime can update them without a re-render.
+ *
+ * The match has to be a whole text node, not a substring. A substring match binds
+ * text that has nothing to do with the state, and because the runtime rewrites every
+ * marked node on each set(), one wrong guess means unrelated state text keeps
+ * appearing there for the life of the page. Two consequences of requiring the whole
+ * node:
+ *
+ *   - An empty value never matches. Under substring matching it matched at every
+ *     position, marking every text node on the page.
+ *   - `Text({ text: "looks ok to me" })` is not a binding for `{ tone: "ok" }`.
+ *
+ * The value is escaped before the search because `html` is already escaped, and the
+ * text around the match is left alone rather than re-escaped.
+ *
+ * A page that needs a binding this cannot infer should declare it directly, with
+ * Html({ html: '<div data-dsl-text="key"></div>' }).
+ */
+function markStateBindings(html: string, state: Record<string, unknown>): string {
   let result = html
   for (const key of Object.keys(state)) {
     const val = state[key]
     if (val == null) continue
     const strVal = String(val)
-    // Only replace if the value appears as text content (not inside HTML tags)
-    const textRegex = new RegExp(`(>)([^<]*?)(${escapeRegex(strVal)})([^<]*?)(<)`, "g")
-    result = result.replace(textRegex, (_m, before, prefix, match, suffix, after) => {
-      return `${before}${escapeHTML(prefix)}<span data-dsl-text="${escapeHTML(key)}">${escapeHTML(match)}</span>${escapeHTML(suffix)}${after}`
-    })
+    if (strVal === "") continue
+    const escaped = escapeHTML(strVal)
+    const textRegex = new RegExp(`>${escapeRegex(escaped)}<`, "g")
+    result = result.replace(textRegex, `><span data-dsl-text="${escapeHTML(key)}">${escaped}</span><`)
   }
   return result
 }

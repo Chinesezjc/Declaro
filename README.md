@@ -350,5 +350,6 @@ Form({
 - handler 无法引用模块作用域（见上方约定），共享逻辑需走全局命名空间
 - Island 只在 DOM 事件上跑 handler，hydration 本身不发事件。需要页面加载时初始化的话用 `Script({ inline })`，等 `[data-island="<id>"]` 的 `data-dsl-hydrated` 变成 `"true"` 后取 `__DSL__.getIslandState(id)`
 - `data-dsl-attr` 只把属性设成空串（布尔属性的语义）。属性值本身要读的场合（比如 CSS 选择器匹配的 `data-*`）用 `data-dsl-attr-value="attr:key"`，它写入 state 值，值为空时移除属性
+- Island 的文本绑定靠在渲染结果里搜 `initialState` 的值来推断，只有整个文本节点与某个值完全相等时才绑定。空值和子串不绑，所以 `initialState` 里初值为空的字段（`{ tone: "" }`）不会自动获得绑定 —— 这类字段写 `Html({ html: '<div data-dsl-text="tone"></div>' })` 显式声明
 - `npm run typecheck` 当前有 56 个既有报错，尚未清理
 - `ComponentNode` 联合含带索引签名的 `PluginNode`，`node.type === "box"` 之类的判别式收窄失效，遍历组件树时需显式断言节点类型
