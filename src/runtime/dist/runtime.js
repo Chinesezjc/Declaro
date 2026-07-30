@@ -689,17 +689,25 @@ var __DSL_RUNTIME__ = (() => {
       }
     }
   }
+  function boundElements(scope, selector) {
+    const found = Array.from(scope.querySelectorAll(selector));
+    return scope.matches(selector) ? [scope, ...found] : found;
+  }
   function syncBindings(root, state) {
-    root.querySelectorAll("[data-dsl-text]").forEach((el) => {
+    syncScalarBindings(root, state);
+    syncListBindings(root, state);
+  }
+  function syncScalarBindings(root, state) {
+    boundElements(root, "[data-dsl-text]").forEach((el) => {
       const key = el.getAttribute("data-dsl-text");
       const val = state[key];
       el.textContent = val != null ? String(val) : "";
     });
-    root.querySelectorAll("[data-dsl-show]").forEach((el) => {
+    boundElements(root, "[data-dsl-show]").forEach((el) => {
       const key = el.getAttribute("data-dsl-show");
       el.style.display = state[key] ? "" : "none";
     });
-    root.querySelectorAll("[data-dsl-class]").forEach((el) => {
+    boundElements(root, "[data-dsl-class]").forEach((el) => {
       const attr = el.getAttribute("data-dsl-class");
       const colonIdx = attr.indexOf(":");
       if (colonIdx < 0) return;
@@ -707,7 +715,7 @@ var __DSL_RUNTIME__ = (() => {
       const key = attr.slice(colonIdx + 1);
       el.classList.toggle(cls, !!state[key]);
     });
-    root.querySelectorAll("[data-dsl-attr]").forEach((el) => {
+    boundElements(root, "[data-dsl-attr]").forEach((el) => {
       const attr = el.getAttribute("data-dsl-attr");
       const colonIdx = attr.indexOf(":");
       if (colonIdx < 0) return;
@@ -731,7 +739,7 @@ var __DSL_RUNTIME__ = (() => {
         }
       }
     });
-    root.querySelectorAll("[data-dsl-attr-value]").forEach((el) => {
+    boundElements(root, "[data-dsl-attr-value]").forEach((el) => {
       const spec = el.getAttribute("data-dsl-attr-value");
       const colonIdx = spec.indexOf(":");
       if (colonIdx < 0) return;
@@ -744,7 +752,14 @@ var __DSL_RUNTIME__ = (() => {
         el.setAttribute(attrName, String(val));
       }
     });
-    root.querySelectorAll("[data-dsl-list]").forEach((container) => {
+    boundElements(root, "[data-dsl-html]").forEach((el) => {
+      const key = el.getAttribute("data-dsl-html");
+      const val = state[key];
+      el.innerHTML = val != null ? String(val) : "";
+    });
+  }
+  function syncListBindings(root, state) {
+    boundElements(root, "[data-dsl-list]").forEach((container) => {
       const key = container.getAttribute("data-dsl-list");
       const items = state[key];
       if (!Array.isArray(items)) return;
@@ -767,13 +782,14 @@ var __DSL_RUNTIME__ = (() => {
         }
         container.appendChild(clone);
         rendered.push(...nodes);
+        for (const node of nodes) {
+          if (node.nodeType === 1) syncScalarBindings(node, state);
+        }
       });
       listRenders.set(container, rendered);
-    });
-    root.querySelectorAll("[data-dsl-html]").forEach((el) => {
-      const key = el.getAttribute("data-dsl-html");
-      const val = state[key];
-      el.innerHTML = val != null ? String(val) : "";
+      for (const node of rendered) {
+        if (node.nodeType === 1) syncListBindings(node, state);
+      }
     });
   }
   function syncTextBindings(root, state) {

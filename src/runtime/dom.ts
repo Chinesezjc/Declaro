@@ -155,6 +155,19 @@ function applyItemAttrs(el: HTMLElement, resolve: (prop: string) => string): voi
 }
 
 /**
+ * Every element in scope carrying `selector`, including scope itself.
+ *
+ * querySelectorAll alone never matches the element it is called on, which is
+ * exactly the case for a list row: the row is the top-level node the template
+ * produced, so a binding declared on the <tr> would be skipped while one on a
+ * <td> inside it would not.
+ */
+function boundElements(scope: HTMLElement, selector: string): HTMLElement[] {
+  const found = Array.from(scope.querySelectorAll<HTMLElement>(selector))
+  return scope.matches(selector) ? [scope, ...found] : found
+}
+
+/**
  * Update all data-dsl-* bindings within root to reflect current state.
  *
  * Binding types:
@@ -166,23 +179,35 @@ function applyItemAttrs(el: HTMLElement, resolve: (prop: string) => string): voi
  *   data-dsl-attr-value="attr:key" → el.setAttribute(attr, String(state[key])), removed when empty
  *   data-dsl-list="key"         → render array from <template data-dsl-list-item>
  *   data-dsl-html="key"         → el.innerHTML = String(state[key])
+ *
+ * The list render happens last and then applies the other bindings to each row it
+ * produced, because a row is created during this pass and would otherwise never
+ * be visited: the scalar passes already ran, and the next call discards the row
+ * and builds a new one. Without it a data-dsl-attr inside a row template is dead
+ * markup, which is what a per-list "disabled while a request is in flight" needs.
  */
 export function syncBindings(root: HTMLElement, state: Record<string, unknown>): void {
+  syncScalarBindings(root, state)
+  syncListBindings(root, state)
+}
+
+/** Everything except list rendering, over one scope. */
+function syncScalarBindings(root: HTMLElement, state: Record<string, unknown>): void {
   // 1. Text bindings
-  root.querySelectorAll<HTMLElement>("[data-dsl-text]").forEach((el) => {
+  boundElements(root, "[data-dsl-text]").forEach((el) => {
     const key = el.getAttribute("data-dsl-text")!
     const val = state[key]
     el.textContent = val != null ? String(val) : ""
   })
 
   // 2. Show/hide bindings
-  root.querySelectorAll<HTMLElement>("[data-dsl-show]").forEach((el) => {
+  boundElements(root, "[data-dsl-show]").forEach((el) => {
     const key = el.getAttribute("data-dsl-show")!
     el.style.display = state[key] ? "" : "none"
   })
 
   // 3. Class toggle bindings
-  root.querySelectorAll<HTMLElement>("[data-dsl-class]").forEach((el) => {
+  boundElements(root, "[data-dsl-class]").forEach((el) => {
     const attr = el.getAttribute("data-dsl-class")!
     const colonIdx = attr.indexOf(":")
     if (colonIdx < 0) return
@@ -192,7 +217,7 @@ export function syncBindings(root: HTMLElement, state: Record<string, unknown>):
   })
 
   // 4. Attribute bindings
-  root.querySelectorAll<HTMLElement>("[data-dsl-attr]").forEach((el) => {
+  boundElements(root, "[data-dsl-attr]").forEach((el) => {
     const attr = el.getAttribute("data-dsl-attr")!
     const colonIdx = attr.indexOf(":")
     if (colonIdx < 0) return
@@ -223,7 +248,7 @@ export function syncBindings(root: HTMLElement, state: Record<string, unknown>):
   // data-dsl-attr sets an attribute to the empty string, which is what a boolean
   // attribute wants but useless for one whose value is read — a data-* attribute
   // a CSS selector matches on, for instance. This writes the state value itself.
-  root.querySelectorAll<HTMLElement>("[data-dsl-attr-value]").forEach((el) => {
+  boundElements(root, "[data-dsl-attr-value]").forEach((el) => {
     const spec = el.getAttribute("data-dsl-attr-value")!
     const colonIdx = spec.indexOf(":")
     if (colonIdx < 0) return
@@ -239,8 +264,25 @@ export function syncBindings(root: HTMLElement, state: Record<string, unknown>):
     }
   })
 
-  // 5. List bindings
-  root.querySelectorAll<HTMLElement>("[data-dsl-list]").forEach((container) => {
+  // 6. HTML bindings
+  boundElements(root, "[data-dsl-html]").forEach((el) => {
+    const key = el.getAttribute("data-dsl-html")!
+    const val = state[key]
+    el.innerHTML = val != null ? String(val) : ""
+  })
+}
+
+/**
+ * Render every list under root, then apply the scalar bindings to each row.
+ *
+ * A row is built here, after the scalar passes have already run, so it has to be
+ * visited explicitly — and it cannot wait for the next call, which discards this
+ * row and builds a fresh one from the template. The scope passed for each row is
+ * the row element itself, which is why the scalar passes match their scope as well
+ * as its descendants: a binding declared on the <tr> is on the row's own element.
+ */
+function syncListBindings(root: HTMLElement, state: Record<string, unknown>): void {
+  boundElements(root, "[data-dsl-list]").forEach((container) => {
     const key = container.getAttribute("data-dsl-list")!
     const items = state[key]
     if (!Array.isArray(items)) return
@@ -283,15 +325,21 @@ export function syncBindings(root: HTMLElement, state: Record<string, unknown>):
       }
       container.appendChild(clone)
       rendered.push(...nodes)
+
+      // Now that the row is in the document, give it the scalar bindings. Only
+      // the row and its descendants, so a nested list inside a row is left for
+      // the recursion below rather than being rendered twice.
+      for (const node of nodes) {
+        if (node.nodeType === 1) syncScalarBindings(node as HTMLElement, state)
+      }
     })
     listRenders.set(container, rendered)
-  })
 
-  // 6. HTML bindings
-  root.querySelectorAll<HTMLElement>("[data-dsl-html]").forEach((el) => {
-    const key = el.getAttribute("data-dsl-html")!
-    const val = state[key]
-    el.innerHTML = val != null ? String(val) : ""
+    // A row may itself contain a list — a per-row detail table, say — and that
+    // container did not exist when the outer querySelectorAll ran.
+    for (const node of rendered) {
+      if (node.nodeType === 1) syncListBindings(node as HTMLElement, state)
+    }
   })
 }
 

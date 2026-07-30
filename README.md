@@ -438,6 +438,8 @@ template 的顶层节点直接进入容器，中间不包 `<div>`：`<tr>` 落�
 
 字段为真时属性设为空串，为假时移除。值经 `String()` 传来，所以空串、`"false"`、`"0"` 都算假。
 
+行里同时也可以用普通的 state 绑定：每渲染一行，运行时就对这一行应用一遍 `text`/`show`/`class`/`attr`/`attr-value`。所以「整张表在请求进行中禁用」用 `data-dsl-attr`（读 state），「这一行不该有这个按钮」用 `data-dsl-item-attr`（读该行字段），两者可以叠在同一个元素上。绑定写在行的顶层元素（`<tr>` 自身）上也生效。行里再嵌一个 `data-dsl-list` 也会渲染。
+
 这件事 `data-dsl-attr` 做不到：它读的是 island state，那是整张表一个值而不是每行一个，结果要么全行禁用要么全不禁用。`{{prop}}` 也做不到：布尔属性只要出现就生效，与值无关，`disabled="{{locked}}"` 会禁用每一行。表格里按行区分的 `disabled` 和 `hidden` 需要这个 —— 已经不是 pending 的任务不该提供「提前开始」，正在用的会话不该提供踢自己下线。
 
 ## data：让一个 handler 服务多个控件

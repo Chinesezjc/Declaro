@@ -218,6 +218,61 @@ test("two lists on one page render independently", () => {
   assert.equal(root.querySelectorAll("#b > li").length, 2)
 })
 
+test("a rendered row gets the state bindings inside it", () => {
+  // The row is built during this pass, after the scalar passes already ran, and
+  // the next pass discards it — so without applying them here a data-dsl-attr
+  // inside a row template is dead markup and its button never disables.
+  const { root } = mount(`<table><tbody id="b" data-dsl-list="rows">
+    <template data-dsl-list-item><tr><td>{{n}}</td><td>
+      <button data-dsl-attr="disabled:busy">go</button>
+      <span data-dsl-text="label"></span>
+    </td></tr></template>
+  </tbody></table>`)
+  syncBindings(root, { rows: [{ n: "a" }, { n: "b" }], busy: true, label: "LBL" })
+
+  const buttons = root.querySelectorAll("tbody#b tr button")
+  assert.equal(buttons.length, 2)
+  assert.ok(Array.from(buttons).every((b) => b.hasAttribute("disabled")))
+  assert.deepEqual(
+    Array.from(root.querySelectorAll("tbody#b tr span")).map((el) => el.textContent),
+    ["LBL", "LBL"],
+  )
+
+  // And they follow the state on the next render, since each render re-applies them.
+  syncBindings(root, { rows: [{ n: "a" }], busy: false, label: "OTHER" })
+  assert.equal(root.querySelector("tbody#b tr button")!.hasAttribute("disabled"), false)
+  assert.equal(root.querySelector("tbody#b tr span")!.textContent, "OTHER")
+})
+
+test("a binding declared on the row element itself applies", () => {
+  // querySelectorAll never matches the element it is called on, and a row IS the
+  // template's top-level node, so a binding on the <tr> needs the scope itself
+  // checked as well as its descendants.
+  const { root } = mount(`<table><tbody id="b" data-dsl-list="rows">
+    <template data-dsl-list-item><tr data-dsl-class="hot:alert"><td>{{n}}</td></tr></template>
+  </tbody></table>`)
+  syncBindings(root, { rows: [{ n: "a" }], alert: true })
+
+  assert.equal(root.querySelector("tbody#b tr")!.classList.contains("hot"), true)
+})
+
+test("a list inside a row renders too", () => {
+  // The inner container did not exist when the outer sweep for [data-dsl-list]
+  // ran, so it is reached by recursing into each row after it is appended.
+  const { root } = mount(`<ul id="outer" data-dsl-list="rows">
+    <template data-dsl-list-item><li>{{n}}<ul class="inner" data-dsl-list="tags">
+      <template data-dsl-list-item><li>{{_value}}</li></template>
+    </ul></li></template>
+  </ul>`)
+  syncBindings(root, { rows: [{ n: "a" }], tags: ["x", "y"] })
+
+  assert.equal(root.querySelectorAll("#outer > li").length, 1)
+  assert.deepEqual(
+    Array.from(root.querySelectorAll("ul.inner > li")).map((el) => el.textContent),
+    ["x", "y"],
+  )
+})
+
 test("data-dsl-item-attr sets a boolean attribute per row", () => {
   // Which rows offer an action is a per-row question, and data-dsl-attr answers
   // it from island state, so it would disable every row or none.

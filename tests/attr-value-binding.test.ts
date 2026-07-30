@@ -38,13 +38,20 @@ function element(attrs: Record<string, string>): StubElement {
   }
 }
 
-/** A root that hands each binding selector the elements carrying that attribute. */
+/**
+ * A root that hands each binding selector the elements carrying that attribute.
+ *
+ * matches() reports false: syncBindings also checks whether the scope element
+ * itself carries a binding, which matters for a list row but not for a root that
+ * only stands in for the container.
+ */
 function root(elements: StubElement[]): HTMLElement {
   return {
     querySelectorAll: (selector: string) => {
       const name = selector.slice(1, -1)
       return elements.filter((el) => name in el.attrs)
     },
+    matches: () => false,
   } as unknown as HTMLElement
 }
 
