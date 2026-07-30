@@ -689,6 +689,19 @@ var __DSL_RUNTIME__ = (() => {
         }
       }
     });
+    root.querySelectorAll("[data-dsl-attr-value]").forEach((el) => {
+      const spec = el.getAttribute("data-dsl-attr-value");
+      const colonIdx = spec.indexOf(":");
+      if (colonIdx < 0) return;
+      const attrName = spec.slice(0, colonIdx);
+      const key = spec.slice(colonIdx + 1);
+      const val = state[key];
+      if (val == null || val === "") {
+        el.removeAttribute(attrName);
+      } else {
+        el.setAttribute(attrName, String(val));
+      }
+    });
     root.querySelectorAll("[data-dsl-list]").forEach((container) => {
       const key = container.getAttribute("data-dsl-list");
       const items = state[key];

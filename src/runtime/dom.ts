@@ -74,6 +74,7 @@ export function bindIslandEvents(root: HTMLElement, registry: Record<string, Eve
  *   data-dsl-class="cls:key"    → el.classList.toggle(cls, !!state[key])
  *   data-dsl-attr="attr:key"    → state[key] ? el.setAttribute(attr, '') : el.removeAttribute(attr)
  *   data-dsl-attr="attr:key=val"→ if state[key]===val → set attr, else remove
+ *   data-dsl-attr-value="attr:key" → el.setAttribute(attr, String(state[key])), removed when empty
  *   data-dsl-list="key"         → render array from <template data-dsl-list-item>
  *   data-dsl-html="key"         → el.innerHTML = String(state[key])
  */
@@ -125,6 +126,27 @@ export function syncBindings(root: HTMLElement, state: Record<string, unknown>):
       } else {
         el.removeAttribute(attrName)
       }
+    }
+  })
+
+  // 4b. Attribute value bindings.
+  //
+  // data-dsl-attr sets an attribute to the empty string, which is what a boolean
+  // attribute wants but useless for one whose value is read — a data-* attribute
+  // a CSS selector matches on, for instance. This writes the state value itself.
+  root.querySelectorAll<HTMLElement>("[data-dsl-attr-value]").forEach((el) => {
+    const spec = el.getAttribute("data-dsl-attr-value")!
+    const colonIdx = spec.indexOf(":")
+    if (colonIdx < 0) return
+    const attrName = spec.slice(0, colonIdx)
+    const key = spec.slice(colonIdx + 1)
+    const val = state[key]
+    // An empty or absent value removes the attribute, so `[attr]` selectors and
+    // `:not([attr])` behave the same way they would on a never-set attribute.
+    if (val == null || val === "") {
+      el.removeAttribute(attrName)
+    } else {
+      el.setAttribute(attrName, String(val))
     }
   })
 
