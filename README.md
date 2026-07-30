@@ -15,6 +15,7 @@ Page({ title, env, children })  →  ComponentNode 树 (IR)  →  静态 HTML
 - 页面定义就是 **TypeScript 对象**，不是字符串模板
 - 编译器遍历 IR 树，生成完整 HTML 文档
 - 输出是**零依赖的独立文件**，直接双击打开，不需要 React/Vue/任何 JS 框架
+- 外链只在用到对应组件时才注入：`Katex` 引入 KaTeX 样式表，`ReactIsland` 引入 React CDN；都不用时输出没有任何外部请求
 
 ### 2. TypeScript 原生，不是新语言
 
@@ -242,7 +243,7 @@ Table({
 
 ```ts
 {
-  id?: string          // 唯一标识
+  id?: string          // 唯一标识，编译为 HTML id 属性，可作锚点目标
   slot?: string        // 挂载到哪个布局区域
   order?: number       // 同 slot 内的排序
   visible?: boolean    // 显隐控制
@@ -330,4 +331,5 @@ Input({ name: "q", islandHandler: "onEnter", islandEvent: "keydown" })
 - IR 可导出但暂不支持反向恢复完整页面
 - 主题系统尚未独立抽象，当前样式在 `src/styles.css`
 - handler 无法引用模块作用域（见上方约定），共享逻辑需走全局命名空间
-- `npm run typecheck` 当前有 63 个既有报错，尚未清理
+- `npm run typecheck` 当前有 56 个既有报错，尚未清理
+- `ComponentNode` 联合含带索引签名的 `PluginNode`，`node.type === "box"` 之类的判别式收窄失效，遍历组件树时需显式断言节点类型

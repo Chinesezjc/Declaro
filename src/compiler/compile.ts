@@ -129,6 +129,16 @@ function escapeHTML(s: string): string {
 }
 
 // ===== Self-alignment wrapper =====
+/**
+ * Emit `id="..."` for a component that declared one, so it can be targeted by a
+ * fragment link and by CSS. Components that already put their id in the markup
+ * themselves (form, modal, island) pass through this untouched — see idAttr's
+ * call sites.
+ */
+function idAttr(node: ComponentNode): string {
+  return node.id ? ` id="${escapeHTML(node.id)}"` : ""
+}
+
 function wrapAlign(node: ComponentNode, inner: string): string {
   const style: string[] = []
   const { alignX, alignY, sizeX, sizeY } = node
@@ -161,11 +171,14 @@ function compileText(node: TextNode): string {
     ? paragraphs.map((p) => `<span class="dsl-text-paragraph">${escapeHTML(p)}</span>`).join("")
     : escapeHTML(node.text)
 
-  const inner = `<${tag} class="${cls}"${style ? ` style="${style}"` : ""}>${bodyHTML}</${tag}>`
+  const hasActions = Boolean(node.titleActions && node.titleActions.length > 0)
+  // The id belongs on the outermost element so a fragment link lands on the whole
+  // block, title bar included.
+  const inner = `<${tag} class="${cls}"${hasActions ? "" : idAttr(node)}${style ? ` style="${style}"` : ""}>${bodyHTML}</${tag}>`
 
-  if (node.titleActions && node.titleActions.length > 0) {
-    const actions = node.titleActions.map(compileComponent).join("")
-    return `<div class="dsl-titlebar">${inner}<div class="dsl-titlebar-actions">${actions}</div></div>`
+  if (hasActions) {
+    const actions = (node.titleActions ?? []).map(compileComponent).join("")
+    return `<div class="dsl-titlebar"${idAttr(node)}>${inner}<div class="dsl-titlebar-actions">${actions}</div></div>`
   }
   return inner
 }
@@ -200,25 +213,23 @@ function compileBox(node: BoxNode): string {
   if (node.title || node.titleActions || node.collapsible) {
     const titleTag = node.title ? `<h2 class="dsl-box-title">${escapeHTML(node.title)}</h2>` : ""
     const actions = (node.titleActions ?? []).map(compileComponent).join("")
-    const collId = node.collapsible ? ` data-collapse-id="bx-${node.id ?? Math.random().toString(36).slice(2)}"` : ""
     const toggleBtn = node.collapsible
       ? `<button class="dsl-collapse-toggle" onclick="toggleCollapse(this)" data-expand-label="${escapeHTML(node.expandLabel ?? "展开")}" data-collapse-label="${escapeHTML(node.collapseLabel ?? "收起")}" aria-expanded="${node.defaultCollapsed ? "false" : "true"}">${node.defaultCollapsed ? (node.expandLabel ?? "展开") : (node.collapseLabel ?? "收起")}</button>`
       : ""
-    titleBar = `<div class="dsl-titlebar"${collId}>${titleTag}<div class="dsl-titlebar-actions">${actions}${toggleBtn}</div></div>`
+    titleBar = `<div class="dsl-titlebar">${titleTag}<div class="dsl-titlebar-actions">${actions}${toggleBtn}</div></div>`
   }
 
   const collapsed = node.collapsible && node.defaultCollapsed ? ` data-collapsed="true"` : ""
   const scroll = node.scroll && node.scroll !== "none" ? ` style="overflow-${node.scroll === "both" ? "auto" : node.scroll}"` : ""
   const childrenDisplay = node.collapsible && node.defaultCollapsed ? ` style="display:none"` : ""
 
-  return `<section class="${cls}"${style ? ` style="${style}"` : ""}${collapsed}${scroll}>
+  return `<section class="${cls}"${idAttr(node)}${style ? ` style="${style}"` : ""}${collapsed}${scroll}>
   ${titleBar}
   <div class="dsl-box-children" style="${childrenStyle}"${childrenDisplay}>${childrenHTML}</div>
 </section>`
 }
 
 function compileCard(node: CardNode): string {
-  const collId = node.collapsible ? ` data-collapse-id="card-${node.id ?? Math.random().toString(36).slice(2)}"` : ""
   const toggleBtn = node.collapsible
     ? `<button class="dsl-collapse-toggle" onclick="toggleCollapse(this)" data-expand-label="${escapeHTML(node.expandLabel ?? "展开")}" data-collapse-label="${escapeHTML(node.collapseLabel ?? "收起")}" aria-expanded="${node.defaultCollapsed ? "false" : "true"}">${node.defaultCollapsed ? (node.expandLabel ?? "展开") : (node.collapseLabel ?? "收起")}</button>`
     : ""
@@ -234,9 +245,9 @@ function compileCard(node: CardNode): string {
   const footerDisplay = collapsed ? ` style="display:none"` : ""
   const collapsedAttr = collapsed ? ` data-collapsed="true"` : ""
 
-  return `<section class="dsl-card"${collapsedAttr}>
+  return `<section class="dsl-card"${idAttr(node)}${collapsedAttr}>
   <div class="dsl-card-header">
-    <div class="dsl-titlebar"${collId}>${title}<div class="dsl-titlebar-actions">${titleActions}${toggleBtn}</div></div>
+    <div class="dsl-titlebar">${title}<div class="dsl-titlebar-actions">${titleActions}${toggleBtn}</div></div>
     ${header}
   </div>
   <div class="dsl-card-body"${bodyDisplay}>${body}</div>
@@ -252,7 +263,7 @@ function compileButton(node: ButtonNode): string {
   // Island wiring is declared per button, so the handler a button triggers does
   // not depend on where the button sits in the rendered tree.
   const eventAttr = islandEventAttr(node.islandHandler, undefined, "click")
-  return `<button class="dsl-button dsl-button-${variant}" type="button"${disabled}${eventAttr}${onclickAttr}>${escapeHTML(node.text)}</button>`
+  return `<button class="dsl-button dsl-button-${variant}"${idAttr(node)} type="button"${disabled}${eventAttr}${onclickAttr}>${escapeHTML(node.text)}</button>`
 }
 
 /**
@@ -273,7 +284,7 @@ function compileInput(node: InputNode): string {
   const placeholder = node.placeholder ? ` placeholder="${escapeHTML(node.placeholder)}"` : ""
   const value = node.defaultValue ? ` value="${escapeHTML(node.defaultValue)}"` : ""
   const event = islandEventAttr(node.islandHandler, node.islandEvent, "input")
-  return `<label class="dsl-field">
+  return `<label class="dsl-field"${idAttr(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
   <input name="${node.name}"${placeholder}${required}${value}${event}>
 </label>`
@@ -286,7 +297,7 @@ function compileSelect(node: SelectNode): string {
   const options = node.options
     .map((o) => `<option value="${escapeHTML(o.value)}">${escapeHTML(o.label)}</option>`)
     .join("")
-  return `<label class="dsl-field">
+  return `<label class="dsl-field"${idAttr(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
   <select name="${node.name}"${required}${multiple}${event}>${options}</select>
 </label>`
@@ -301,7 +312,7 @@ function compileSlider(node: SliderNode): string {
   const valueType = node.valueType ?? "int"
   const sliderConfig = JSON.stringify({ name: node.name, min, max, step, valueType, defaultValue: defVal })
   const inputAttrs = node.input ? " data-dsl-slider-input" : ""
-  return `<div class="dsl-slider-field" data-dsl-slider='${sliderConfig}'>
+  return `<div class="dsl-slider-field"${idAttr(node)} data-dsl-slider='${sliderConfig}'>
   <span class="dsl-slider-label">
     <span>${escapeHTML(label)}</span>
     <output>${defVal}</output>
@@ -315,7 +326,7 @@ function compileTextArea(node: TextAreaNode): string {
   const required = node.required ? " required" : ""
   const placeholder = node.placeholder ? ` placeholder="${escapeHTML(node.placeholder)}"` : ""
   const rows = node.rows ? ` rows="${node.rows}"` : ""
-  return `<label class="dsl-field">
+  return `<label class="dsl-field"${idAttr(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
   <textarea name="${node.name}"${placeholder}${required}${rows}></textarea>
 </label>`
@@ -341,7 +352,7 @@ function compileTable(node: TableNode): string {
     .join("")
   const rowActions = (node.rowActions ?? []).map(compileComponent).join("")
 
-  return `<section class="dsl-table-card" data-datasource="${escapeHTML(node.dataSource)}">
+  return `<section class="dsl-table-card"${idAttr(node)} data-datasource="${escapeHTML(node.dataSource)}">
   ${titleBar}
   <div class="dsl-table-wrap">
     <table class="dsl-table" data-datasource="${escapeHTML(node.dataSource)}">
@@ -361,7 +372,7 @@ function compileList(node: ListNode): string {
     }).join("")
     : ""
 
-  return `<section class="dsl-list"${node.dataSource ? ` data-datasource="${escapeHTML(node.dataSource)}"` : ""}>
+  return `<section class="dsl-list"${idAttr(node)}${node.dataSource ? ` data-datasource="${escapeHTML(node.dataSource)}"` : ""}>
   <div class="dsl-list-items">${itemsHTML || '<span class="dsl-list-empty">无数据</span>'}</div>
 </section>`
 }
@@ -664,6 +675,15 @@ if (window.location.search.includes('__dsl_debug=1')) {
 </script>`
   }
 
+  // KaTeX ships its own stylesheet, and the pre-rendered formula markup is
+  // unreadable without it. Link it only when the page actually has a formula, so
+  // a page with no Katex node stays free of external requests.
+  const hasKatex =
+    page.children.some(hasKatexInTree) || (page.head ?? []).some(hasKatexInTree)
+  const katexCSS = hasKatex
+    ? `\n<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">`
+    : ""
+
   // Check if any ReactIsland is used — if so, inject React CDN
   const hasReactIsland = page.children.some((c) => hasReactIslandInTree(c))
   let reactCDN = ""
@@ -677,8 +697,7 @@ if (window.location.search.includes('__dsl_debug=1')) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${escapeHTML(options.title ?? page.title)}</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<title>${escapeHTML(options.title ?? page.title)}</title>${katexCSS}
 <style>
 ${css}
 </style>
@@ -701,26 +720,47 @@ ${RUNTIME_JS}
 
 // Recursively check if any component in the tree is a ReactIsland
 function hasReactIslandInTree(node: ComponentNode): boolean {
-  if (node.type === "react-island") return true
-  const plugin = getPlugin(node.type)
-  if (plugin?.nested) {
-    return plugin.nested(node).some((child) => hasReactIslandInTree(child))
-  }
-  // Legacy nested children
+  return someInTree(node, (n) => n.type === "react-island")
+}
+
+function hasKatexInTree(node: ComponentNode): boolean {
+  return someInTree(node, (n) => n.type === "katex")
+}
+
+/**
+ * Children of a node that the plugin registry does not describe.
+ *
+ * PluginNode carries an `[key: string]: unknown` index signature, which widens
+ * ComponentNode enough that `node.type === "box"` no longer narrows the union.
+ * Each case therefore asserts the node type it just matched on.
+ */
+function legacyChildren(node: ComponentNode): ComponentNode[] {
   switch (node.type) {
     case "box":
-      return node.children.some(hasReactIslandInTree)
-    case "card":
-      return [...(node.header ?? []), ...(node.body ?? []), ...(node.footer ?? [])].some(hasReactIslandInTree)
+      return (node as BoxNode).children
+    case "card": {
+      const card = node as CardNode
+      return [...(card.header ?? []), ...(card.body ?? []), ...(card.footer ?? [])]
+    }
     case "form":
-      return node.fields.some(hasReactIslandInTree)
+      return (node as FormNode).fields
     case "modal":
-      return node.children.some(hasReactIslandInTree)
-    case "island":
-      return hasReactIslandInTree(node.render(node.initialState))
+      return (node as ModalNode).children
+    case "island": {
+      const island = node as IslandNode
+      return [island.render(island.initialState)]
+    }
     default:
-      return false
+      return []
   }
+}
+
+/** Depth-first search over a component tree, including plugin-declared children. */
+function someInTree(node: ComponentNode, predicate: (node: ComponentNode) => boolean): boolean {
+  if (predicate(node)) return true
+  const plugin = getPlugin(node.type)
+  const children = plugin?.nested ? plugin.nested(node) : legacyChildren(node)
+  return children.some((child) => someInTree(child, predicate))
 }
 
 // ===== Compile a single page to file =====
