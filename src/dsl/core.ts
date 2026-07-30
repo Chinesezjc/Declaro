@@ -29,6 +29,26 @@ export type ComponentBase = {
    * control itself, write a descendant rule: `.my-field input { ... }`.
    */
   className?: string
+  /**
+   * Extra `data-*` attributes, keyed without the `data-` prefix: `{ action:
+   * "stop", pid: "418" }` emits `data-action="stop" data-pid="418"`.
+   *
+   * This is what lets one island handler serve many controls. A handler receives
+   * the DOM event, so it can read `event.target.closest("[data-action]").dataset`
+   * and branch on it — without which every row of a table needs its own handler
+   * name, and a handler cannot know which row it fired for, since the arguments
+   * carry no per-element data.
+   *
+   * Lands on the same element as `bind`, not `className`: the handler reads these
+   * off the event target, so a field's data has to be on its control rather than
+   * on the label the click never reaches.
+   *
+   * Keys must match /^[a-z][a-z0-9-]*$/ — the lowercase, hyphen-separated form
+   * HTML wants. `dataset` exposes them camelCased, so `data-out-dir` is read as
+   * `dataset.outDir`. A key outside that shape throws at compile time rather than
+   * emitting an attribute the browser would silently mangle.
+   */
+  data?: Record<string, string>
 }
 
 /**

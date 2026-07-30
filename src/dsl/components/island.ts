@@ -106,6 +106,8 @@ export function Island(config: IslandConfig): IslandNode {
     className: config.className,
     // `bind` is deliberately not carried over: the runtime syncs bindings with
     // querySelectorAll from the island's own element, which never matches that
-    // element, so a binding declared here could never fire.
+    // element, so a binding declared here could never fire. `data` is dropped for
+    // the same reason in reverse — a handler reads it off the event target, and a
+    // click on the island's own element dispatches no handler.
   }
 }

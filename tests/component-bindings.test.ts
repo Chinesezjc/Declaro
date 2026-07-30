@@ -14,6 +14,7 @@ import {
   Env,
   Form,
   Input,
+  Katex,
   Page,
   Select,
   Text,
@@ -30,6 +31,13 @@ function compileChildren(children: ComponentNode[]): string {
       children,
     }),
   )
+}
+
+/** The first match of a pattern in the output, asserted to exist. */
+function html_match(html: string, pattern: RegExp): string {
+  const match = html.match(pattern)
+  assert.ok(match, `no match for ${pattern} in output`)
+  return match[0]
 }
 
 /** The first tag of the given name in the output. */
@@ -175,6 +183,24 @@ test("a form binds without losing its submit wiring", () => {
   )
   assert.match(plain, /action="\/api\/form\/f2"/)
   assert.match(plain, /data-dsl-show="onRoute"/)
+})
+
+test("a Katex node binds and keeps its id", () => {
+  // A formula is a link target like any other block, and `show` is how a page
+  // reveals one conditionally.
+  const inline = compileChildren([
+    Katex({ id: "k1", expression: "a^2", slot: "main", bind: { show: "onRoute" } }),
+  ])
+  const span = html_match(inline, /<span class="dsl-katex dsl-katex-inline"[^>]*>/)
+  assert.match(span, /id="k1"/)
+  assert.match(span, /data-dsl-show="onRoute"/)
+
+  const block = compileChildren([
+    Katex({ id: "k2", expression: "a^2", displayMode: true, slot: "main", bind: { show: "onRoute" } }),
+  ])
+  const div = html_match(block, /<div class="dsl-katex dsl-katex-block"[^>]*>/)
+  assert.match(div, /id="k2"/)
+  assert.match(div, /data-dsl-show="onRoute"/)
 })
 
 test("a state key and a class name are escaped", () => {

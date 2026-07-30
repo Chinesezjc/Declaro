@@ -255,6 +255,7 @@ Table({
   sizeY?: "hug" | "fill"
   className?: string   // 追加到最外层元素的 class（见 className 章节）
   bind?: ComponentBinding  // Island 内的响应绑定（见 bind 章节）
+  data?: Record<string, string>  // 额外的 data-* 属性（见 data 章节）
 }
 ```
 
@@ -401,6 +402,33 @@ Box({ layout: "vertical", children: [...], bind: { show: "onOverview", class: { 
 属性落在哪个元素上：组件自己的最外层元素，两个例外 —— 字段（`Input`/`Select`/`TextArea`）绑到控件而不是外层 `label`，因为 `disabled` 必须作用到控件；带 `titleActions` 的 `Text` 绑到文本元素而不是标题栏，否则一次 `set()` 就会把操作按钮连同文本一起替换掉。`id` 的位置不变，仍在最外层。
 
 `Script`/`Katex`/`Html` 忽略 `bind`（`Html` 自己写属性）。`Island` 也忽略：运行时用 island 元素自身的 `querySelectorAll` 同步绑定，匹配不到该元素本身，绑在它上面永远不触发 —— 绑到 island 内部的组件上。容器（`Box`/`Card`）上 `show`/`class` 作用于整个面板，但 `text`/`html` 会用 state 值替换掉它的子组件。
+
+## data：让一个 handler 服务多个控件
+
+`data` 声明额外的 `data-*` 属性，key 不带 `data-` 前缀：`{ action: "stop", pid: "418" }` 编译为 `data-action="stop" data-pid="418"`。
+
+handler 拿到的是 DOM 事件，所以它能从 `event.target.closest("[data-action]").dataset` 读出是哪个控件触发的并据此分支。没有这个字段时，表格每一行都得有自己的 handler 名，而且 handler 的参数里不带任何按元素区分的数据，它无法知道自己是为哪一行触发的。
+
+```ts
+// 一个 handler，一整张表的行
+Button({ text: "停止", islandHandler: "rowAction", data: { action: "stop", pid: String(row.pid) } })
+Button({ text: "日志", islandHandler: "rowAction", data: { action: "log", "out-dir": row.out_dir } })
+
+handlers: {
+  rowAction: (event, stateHandle) => {
+    const el = (event.target as HTMLElement).closest("[data-action]") as HTMLElement
+    if (!el) return
+    if (el.dataset.action === "stop") window.__APP__.stopPid(el.dataset.pid)
+    if (el.dataset.action === "log") window.__APP__.pickLog(el.dataset.outDir)
+  },
+}
+```
+
+落在哪个元素上：和 `bind` 同一个，不是 `className` 那个。handler 从事件目标读它，所以字段的 `data` 必须在控件上，而不是点击永远到不了的 `label` 上。
+
+key 必须匹配 `/^[a-z][a-z0-9-]*$/`，即 HTML 要的小写连字符形式。`dataset` 读出来是驼峰，`data-out-dir` 读作 `dataset.outDir`。形状不合的 key 在编译期抛错而不是照样输出 —— HTML 会接受 `data-Foo` 然后把它暴露成 `dataset.foo`，带空格的 key 则会静默变成两个属性，这两种都是页面作者在 DSL 里看不见的 bug。
+
+`Island` 忽略 `data`，原因与它忽略 `bind` 相同的另一面：handler 从事件目标读 `data`，而点在 island 自身元素上不派发任何 handler。
 
 ## 已知限制
 

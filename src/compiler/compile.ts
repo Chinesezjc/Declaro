@@ -136,7 +136,46 @@ function escapeHTML(s: string): string {
  * call sites.
  */
 function idAttr(node: ComponentNode): string {
-  return `${idOnly(node)}${bindAttrs(node)}`
+  return `${idOnly(node)}${runtimeAttrs(node)}`
+}
+
+/**
+ * The attributes client-side code reads off an element: the binding attributes
+ * the runtime syncs, and the data-* attributes an island handler reads from the
+ * event target.
+ *
+ * Emitted together because they belong on the same element for the same reason —
+ * both are read at runtime rather than styled — so a component that puts
+ * bindings on an inner control has to put its data there too.
+ */
+function runtimeAttrs(node: ComponentNode): string {
+  return `${bindAttrs(node)}${dataAttrs(node)}`
+}
+
+/** Matches the attribute-name shape `data` accepts; see ComponentBase.data. */
+const DATA_KEY = /^[a-z][a-z0-9-]*$/
+
+/**
+ * Emit the `data-*` attributes a component declared, so one island handler can
+ * serve many controls by branching on the event target's dataset.
+ *
+ * A key outside DATA_KEY throws rather than being escaped into the output: HTML
+ * would accept `data-Foo` and then expose it as `dataset.foo`, and an attribute
+ * name with a space in it silently becomes two attributes. Both are bugs the page
+ * author cannot see in the DSL, so they are rejected at compile time.
+ */
+function dataAttrs(node: ComponentNode): string {
+  if (!node.data) return ""
+  return Object.entries(node.data)
+    .map(([key, value]) => {
+      if (!DATA_KEY.test(key)) {
+        throw new Error(
+          `data key ${JSON.stringify(key)} must match ${DATA_KEY} (lowercase, hyphen-separated)`,
+        )
+      }
+      return ` data-${key}="${escapeHTML(value)}"`
+    })
+    .join("")
 }
 
 /**
@@ -233,7 +272,7 @@ function compileText(node: TextNode): string {
   // position the block rather than the text inside it. Bindings stay on the text
   // element either way — a text binding on the title bar would replace the action
   // buttons with the state value, and a show binding would hide them with it.
-  const inner = `<${tag} class="${hasActions ? cls : classList(node, cls)}"${hasActions ? "" : idOnly(node)}${bindAttrs(node)}${style ? ` style="${style}"` : ""}>${bodyHTML}</${tag}>`
+  const inner = `<${tag} class="${hasActions ? cls : classList(node, cls)}"${hasActions ? "" : idOnly(node)}${runtimeAttrs(node)}${style ? ` style="${style}"` : ""}>${bodyHTML}</${tag}>`
 
   if (hasActions) {
     const actions = (node.titleActions ?? []).map(compileComponent).join("")
@@ -374,7 +413,7 @@ function compileInput(node: InputNode): string {
   const length = numAttr("minlength", node.minLength) + numAttr("maxlength", node.maxLength)
   const autoComplete = attr("autocomplete", node.autoComplete)
   // Bindings go on the input, not the label: `disabled` has to reach the control.
-  const input = `<input name="${escapeHTML(node.name)}"${type}${placeholder}${required}${value}${accept}${inputMode}${pattern}${range}${length}${autoComplete}${event}${bindAttrs(node)}>`
+  const input = `<input name="${escapeHTML(node.name)}"${type}${placeholder}${required}${value}${accept}${inputMode}${pattern}${range}${length}${autoComplete}${event}${runtimeAttrs(node)}>`
 
   // A hidden input has nothing to label, and the dsl-field wrapper would leave a
   // gap in the form's field grid.
@@ -402,7 +441,7 @@ function compileSelect(node: SelectNode): string {
     .join("")
   return `<label class="${classList(node, "dsl-field")}"${idOnly(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
-  <select name="${node.name}"${required}${multiple}${event}${bindAttrs(node)}>${options}</select>
+  <select name="${node.name}"${required}${multiple}${event}${runtimeAttrs(node)}>${options}</select>
 </label>`
 }
 
@@ -431,7 +470,7 @@ function compileTextArea(node: TextAreaNode): string {
   const rows = node.rows ? ` rows="${node.rows}"` : ""
   return `<label class="${classList(node, "dsl-field")}"${idOnly(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
-  <textarea name="${node.name}"${placeholder}${required}${rows}${bindAttrs(node)}></textarea>
+  <textarea name="${node.name}"${placeholder}${required}${rows}${runtimeAttrs(node)}></textarea>
 </label>`
 }
 
@@ -446,13 +485,13 @@ function compileForm(node: FormNode): string {
   // away and the multipart body the handler was assembling would be lost.
   if (node.islandHandler) {
     const event = islandEventAttr(node.islandHandler, "submit", "submit")
-    return `<form class="${classList(node, "dsl-form")}" id="${escapeHTML(node.id)}"${event}${bindAttrs(node)}${onSignal}>
+    return `<form class="${classList(node, "dsl-form")}" id="${escapeHTML(node.id)}"${event}${runtimeAttrs(node)}${onSignal}>
   <div class="dsl-form-fields">${fields}</div>
   <div class="dsl-form-actions">${submitBtn}</div>
 </form>`
   }
 
-  return `<form class="${classList(node, "dsl-form")}" id="${node.id}" method="post" action="/api/form/${node.id}" onsubmit="handleFormSubmit(event,'${node.id}')"${bindAttrs(node)}${onSignal}>
+  return `<form class="${classList(node, "dsl-form")}" id="${node.id}" method="post" action="/api/form/${node.id}" onsubmit="handleFormSubmit(event,'${node.id}')"${runtimeAttrs(node)}${onSignal}>
   <div class="dsl-form-fields">${fields}</div>
   <div class="dsl-form-actions">${submitBtn}</div>
 </form>`
@@ -495,7 +534,7 @@ function compileList(node: ListNode): string {
 function compileModal(node: ModalNode): string {
   const title = node.title ? `<h2>${escapeHTML(node.title)}</h2>` : ""
   const children = node.children.map(compileComponent).join("")
-  return `<section class="${classList(node, "dsl-modal")}" id="${node.id}"${bindAttrs(node)} hidden>
+  return `<section class="${classList(node, "dsl-modal")}" id="${node.id}"${runtimeAttrs(node)} hidden>
   ${title}
   <div class="dsl-modal-body">${children}</div>
 </section>`
@@ -658,9 +697,13 @@ function compileKatex(node: KatexNode): string {
       displayMode: node.displayMode ?? false,
       throwOnError: false,
     })
+    // idAttr rather than nothing: a formula is as much a link target as any other
+    // block, and `show` is how a page reveals one conditionally. A `text` or
+    // `html` binding here would overwrite the rendered formula, which is the
+    // caller's business — the same is true of Box and Card.
     return node.displayMode
-      ? `<div class="${classList(node, "dsl-katex dsl-katex-block")}">${html}</div>`
-      : `<span class="${classList(node, "dsl-katex dsl-katex-inline")}">${html}</span>`
+      ? `<div class="${classList(node, "dsl-katex dsl-katex-block")}"${idAttr(node)}>${html}</div>`
+      : `<span class="${classList(node, "dsl-katex dsl-katex-inline")}"${idAttr(node)}>${html}</span>`
   } catch {
     return `<code class="dsl-katex-error">${escapeHTML(node.expression)}</code>`
   }
