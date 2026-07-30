@@ -244,6 +244,17 @@ button:disabled {
   background: linear-gradient(135deg, #0f766e, #2563eb);
 }
 
+/* Body and caption text set a fixed slate colour, which lands on the header's
+   dark gradient at roughly 2:1 contrast. Inside the header they follow the
+   header's own colour instead. */
+.dsl-slot-header .dsl-text-body {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.dsl-slot-header .dsl-text-caption {
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .dsl-slot-toolbar {
   display: flex;
   justify-content: flex-end;
