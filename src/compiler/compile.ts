@@ -136,7 +136,50 @@ function escapeHTML(s: string): string {
  * call sites.
  */
 function idAttr(node: ComponentNode): string {
+  return `${idOnly(node)}${bindAttrs(node)}`
+}
+
+/**
+ * Emit only the id, for a component whose bindings belong on an inner element
+ * instead — a field's bindings go on its control, not on the label around it,
+ * because that is what `disabled` and a value binding have to reach.
+ */
+function idOnly(node: ComponentNode): string {
   return node.id ? ` id="${escapeHTML(node.id)}"` : ""
+}
+
+/**
+ * Emit the data-dsl-* attributes for a component's declared bindings, which the
+ * client runtime syncs on every island state change.
+ *
+ * Emitted here rather than left to the compiler's text-binding inference so a
+ * page can bind a field the inference cannot see: one whose initial value is
+ * empty, or whose text is a substring of surrounding prose.
+ */
+function bindAttrs(node: ComponentNode): string {
+  const bind = node.bind
+  if (!bind) return ""
+  const parts: string[] = []
+  if (bind.text) parts.push(` data-dsl-text="${escapeHTML(bind.text)}"`)
+  if (bind.html) parts.push(` data-dsl-html="${escapeHTML(bind.html)}"`)
+  if (bind.show) parts.push(` data-dsl-show="${escapeHTML(bind.show)}"`)
+  if (bind.list) parts.push(` data-dsl-list="${escapeHTML(bind.list)}"`)
+  if (bind.class) {
+    parts.push(` data-dsl-class="${escapeHTML(`${bind.class.cls}:${bind.class.key}`)}"`)
+  }
+  if (bind.attr) {
+    // The runtime splits "attr:key" on the first colon and "key=val" on the first
+    // equals, so an attribute name may not contain a colon and a key may not
+    // contain an equals.
+    const spec = bind.attr.equals != null
+      ? `${bind.attr.attr}:${bind.attr.key}=${bind.attr.equals}`
+      : `${bind.attr.attr}:${bind.attr.key}`
+    parts.push(` data-dsl-attr="${escapeHTML(spec)}"`)
+  }
+  if (bind.attrValue) {
+    parts.push(` data-dsl-attr-value="${escapeHTML(`${bind.attrValue.attr}:${bind.attrValue.key}`)}"`)
+  }
+  return parts.join("")
 }
 
 function wrapAlign(node: ComponentNode, inner: string): string {
@@ -173,12 +216,14 @@ function compileText(node: TextNode): string {
 
   const hasActions = Boolean(node.titleActions && node.titleActions.length > 0)
   // The id belongs on the outermost element so a fragment link lands on the whole
-  // block, title bar included.
-  const inner = `<${tag} class="${cls}"${hasActions ? "" : idAttr(node)}${style ? ` style="${style}"` : ""}>${bodyHTML}</${tag}>`
+  // block, title bar included. Bindings stay on the text element either way: a
+  // text binding on the title bar would replace the action buttons with the state
+  // value, and a show binding would hide them along with the text.
+  const inner = `<${tag} class="${cls}"${hasActions ? "" : idOnly(node)}${bindAttrs(node)}${style ? ` style="${style}"` : ""}>${bodyHTML}</${tag}>`
 
   if (hasActions) {
     const actions = (node.titleActions ?? []).map(compileComponent).join("")
-    return `<div class="dsl-titlebar"${idAttr(node)}>${inner}<div class="dsl-titlebar-actions">${actions}</div></div>`
+    return `<div class="dsl-titlebar"${idOnly(node)}>${inner}<div class="dsl-titlebar-actions">${actions}</div></div>`
   }
   return inner
 }
@@ -314,13 +359,14 @@ function compileInput(node: InputNode): string {
   const range = numAttr("min", node.min) + numAttr("max", node.max) + numAttr("step", node.step)
   const length = numAttr("minlength", node.minLength) + numAttr("maxlength", node.maxLength)
   const autoComplete = attr("autocomplete", node.autoComplete)
-  const input = `<input name="${escapeHTML(node.name)}"${type}${placeholder}${required}${value}${accept}${inputMode}${pattern}${range}${length}${autoComplete}${event}>`
+  // Bindings go on the input, not the label: `disabled` has to reach the control.
+  const input = `<input name="${escapeHTML(node.name)}"${type}${placeholder}${required}${value}${accept}${inputMode}${pattern}${range}${length}${autoComplete}${event}${bindAttrs(node)}>`
 
   // A hidden input has nothing to label, and the dsl-field wrapper would leave a
   // gap in the form's field grid.
   if (node.inputType === "hidden") return input
 
-  return `<label class="dsl-field"${idAttr(node)}>
+  return `<label class="dsl-field"${idOnly(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
   ${input}
 </label>`
@@ -338,9 +384,9 @@ function compileSelect(node: SelectNode): string {
       return `<option value="${escapeHTML(o.value)}"${selected}>${escapeHTML(o.label)}</option>`
     })
     .join("")
-  return `<label class="dsl-field"${idAttr(node)}>
+  return `<label class="dsl-field"${idOnly(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
-  <select name="${node.name}"${required}${multiple}${event}>${options}</select>
+  <select name="${node.name}"${required}${multiple}${event}${bindAttrs(node)}>${options}</select>
 </label>`
 }
 
@@ -367,9 +413,9 @@ function compileTextArea(node: TextAreaNode): string {
   const required = node.required ? " required" : ""
   const placeholder = node.placeholder ? ` placeholder="${escapeHTML(node.placeholder)}"` : ""
   const rows = node.rows ? ` rows="${node.rows}"` : ""
-  return `<label class="dsl-field"${idAttr(node)}>
+  return `<label class="dsl-field"${idOnly(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
-  <textarea name="${node.name}"${placeholder}${required}${rows}></textarea>
+  <textarea name="${node.name}"${placeholder}${required}${rows}${bindAttrs(node)}></textarea>
 </label>`
 }
 
@@ -384,13 +430,13 @@ function compileForm(node: FormNode): string {
   // away and the multipart body the handler was assembling would be lost.
   if (node.islandHandler) {
     const event = islandEventAttr(node.islandHandler, "submit", "submit")
-    return `<form class="dsl-form" id="${escapeHTML(node.id)}"${event}${onSignal}>
+    return `<form class="dsl-form" id="${escapeHTML(node.id)}"${event}${bindAttrs(node)}${onSignal}>
   <div class="dsl-form-fields">${fields}</div>
   <div class="dsl-form-actions">${submitBtn}</div>
 </form>`
   }
 
-  return `<form class="dsl-form" id="${node.id}" method="post" action="/api/form/${node.id}" onsubmit="handleFormSubmit(event,'${node.id}')"${onSignal}>
+  return `<form class="dsl-form" id="${node.id}" method="post" action="/api/form/${node.id}" onsubmit="handleFormSubmit(event,'${node.id}')"${bindAttrs(node)}${onSignal}>
   <div class="dsl-form-fields">${fields}</div>
   <div class="dsl-form-actions">${submitBtn}</div>
 </form>`
@@ -433,7 +479,7 @@ function compileList(node: ListNode): string {
 function compileModal(node: ModalNode): string {
   const title = node.title ? `<h2>${escapeHTML(node.title)}</h2>` : ""
   const children = node.children.map(compileComponent).join("")
-  return `<section class="dsl-modal" id="${node.id}" hidden>
+  return `<section class="dsl-modal" id="${node.id}"${bindAttrs(node)} hidden>
   ${title}
   <div class="dsl-modal-body">${children}</div>
 </section>`

@@ -353,6 +353,33 @@ Select({
 })
 ```
 
+## bind：声明式响应绑定
+
+Island 内的组件用 `bind` 声明要跟随 state 变化的部分，编译为运行时同步的 `data-dsl-*` 属性。不写 `bind` 时只有编译器的文本推断（整个文本节点与某个 state 值完全相等）会产生绑定，所以初值为空、或文本是周围散文的子串的字段必须显式声明。
+
+```ts
+Text({ text: "", bind: { text: "result", show: "hasResult", attrValue: { attr: "data-tone", key: "tone" } } })
+Button({ text: "开始压测", islandHandler: "start", bind: { attr: { attr: "disabled", key: "busy" } } })
+Button({ text: "停止", islandHandler: "stop", bind: { attr: { attr: "disabled", key: "status", equals: "idle" } } })
+Box({ layout: "vertical", children: [...], bind: { show: "onOverview", class: { cls: "active", key: "isCurrent" } } })
+```
+
+| 字段 | 编译为 | 行为 |
+|------|--------|------|
+| `text: "key"` | `data-dsl-text` | 用 `state[key]` 替换元素文本 |
+| `html: "key"` | `data-dsl-html` | 用 `state[key]` 替换 innerHTML，不转义 |
+| `show: "key"` | `data-dsl-show` | `state[key]` 为真时显示，否则隐藏 |
+| `class: { cls, key }` | `data-dsl-class="cls:key"` | 按 `state[key]` 真假切换 class |
+| `attr: { attr, key, equals? }` | `data-dsl-attr="attr:key"` / `"attr:key=val"` | 布尔属性：值恒为空串 |
+| `attrValue: { attr, key }` | `data-dsl-attr-value` | 写入 `String(state[key])`，为空时移除属性 |
+| `list: "key"` | `data-dsl-list` | 用元素内的 `<template data-dsl-list-item>` 渲染 `state[key]` |
+
+每种绑定一个组件只能声明一个：运行时从每个属性只读一个值，同组件上的第二个 `class` 或 `attr` 会覆盖第一个。
+
+属性落在哪个元素上：组件自己的最外层元素，两个例外 —— 字段（`Input`/`Select`/`TextArea`）绑到控件而不是外层 `label`，因为 `disabled` 必须作用到控件；带 `titleActions` 的 `Text` 绑到文本元素而不是标题栏，否则一次 `set()` 就会把操作按钮连同文本一起替换掉。`id` 的位置不变，仍在最外层。
+
+`Script`/`Katex`/`Html` 忽略 `bind`（`Html` 自己写属性）。`Island` 也忽略：运行时用 island 元素自身的 `querySelectorAll` 同步绑定，匹配不到该元素本身，绑在它上面永远不触发 —— 绑到 island 内部的组件上。容器（`Box`/`Card`）上 `show`/`class` 作用于整个面板，但 `text`/`html` 会用 state 值替换掉它的子组件。
+
 ## 已知限制
 
 - Table/List 在静态模式下需要服务端提供数据 API
@@ -361,7 +388,7 @@ Select({
 - 主题系统尚未独立抽象，当前样式在 `src/styles.css`
 - handler 无法引用模块作用域（见上方约定），共享逻辑需走全局命名空间
 - Island 只在 DOM 事件上跑 handler，hydration 本身不发事件。需要页面加载时初始化的话用 `Script({ inline })`，等 `[data-island="<id>"]` 的 `data-dsl-hydrated` 变成 `"true"` 后取 `__DSL__.getIslandState(id)`
-- `data-dsl-attr` 只把属性设成空串（布尔属性的语义）。属性值本身要读的场合（比如 CSS 选择器匹配的 `data-*`）用 `data-dsl-attr-value="attr:key"`，它写入 state 值，值为空时移除属性
-- Island 的文本绑定靠在渲染结果里搜 `initialState` 的值来推断，只有整个文本节点与某个值完全相等时才绑定。空值和子串不绑，所以 `initialState` 里初值为空的字段（`{ tone: "" }`）不会自动获得绑定 —— 这类字段写 `Html({ html: '<div data-dsl-text="tone"></div>' })` 显式声明
+- `data-dsl-attr` 只把属性设成空串（布尔属性的语义）。属性值本身要读的场合（比如 CSS 选择器匹配的 `data-*`）用 `bind: { attrValue: { attr, key } }`，它写入 state 值，值为空时移除属性
+- Island 的文本绑定靠在渲染结果里搜 `initialState` 的值来推断，只有整个文本节点与某个值完全相等时才绑定。空值和子串不绑，所以 `initialState` 里初值为空的字段（`{ tone: "" }`）不会自动获得绑定 —— 这类字段用 `bind`（见上方章节）显式声明
 - `npm run typecheck` 当前有 56 个既有报错，尚未清理
 - `ComponentNode` 联合含带索引签名的 `PluginNode`，`node.type === "box"` 之类的判别式收窄失效，遍历组件树时需显式断言节点类型
