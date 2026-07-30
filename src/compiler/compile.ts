@@ -182,6 +182,19 @@ function bindAttrs(node: ComponentNode): string {
   return parts.join("")
 }
 
+/**
+ * The class list for a component's outermost element: its own dsl-* classes plus
+ * whatever `className` declared.
+ *
+ * Additive rather than replacing, because a component's own styling comes from
+ * the dsl-* classes and dropping them would strip it. A page that has to
+ * override one writes a more specific rule.
+ */
+function classList(node: ComponentNode, own: string): string {
+  const extra = node.className?.trim()
+  return extra ? `${own} ${escapeHTML(extra)}` : own
+}
+
 function wrapAlign(node: ComponentNode, inner: string): string {
   const style: string[] = []
   const { alignX, alignY, sizeX, sizeY } = node
@@ -215,15 +228,16 @@ function compileText(node: TextNode): string {
     : escapeHTML(node.text)
 
   const hasActions = Boolean(node.titleActions && node.titleActions.length > 0)
-  // The id belongs on the outermost element so a fragment link lands on the whole
-  // block, title bar included. Bindings stay on the text element either way: a
-  // text binding on the title bar would replace the action buttons with the state
-  // value, and a show binding would hide them along with the text.
-  const inner = `<${tag} class="${cls}"${hasActions ? "" : idOnly(node)}${bindAttrs(node)}${style ? ` style="${style}"` : ""}>${bodyHTML}</${tag}>`
+  // The id and className belong on the outermost element: a fragment link should
+  // land on the whole block, title bar included, and a layout class has to
+  // position the block rather than the text inside it. Bindings stay on the text
+  // element either way — a text binding on the title bar would replace the action
+  // buttons with the state value, and a show binding would hide them with it.
+  const inner = `<${tag} class="${hasActions ? cls : classList(node, cls)}"${hasActions ? "" : idOnly(node)}${bindAttrs(node)}${style ? ` style="${style}"` : ""}>${bodyHTML}</${tag}>`
 
   if (hasActions) {
     const actions = (node.titleActions ?? []).map(compileComponent).join("")
-    return `<div class="dsl-titlebar"${idOnly(node)}>${inner}<div class="dsl-titlebar-actions">${actions}</div></div>`
+    return `<div class="${classList(node, "dsl-titlebar")}"${idOnly(node)}>${inner}<div class="dsl-titlebar-actions">${actions}</div></div>`
   }
   return inner
 }
@@ -268,7 +282,7 @@ function compileBox(node: BoxNode): string {
   const scroll = node.scroll && node.scroll !== "none" ? ` style="overflow-${node.scroll === "both" ? "auto" : node.scroll}"` : ""
   const childrenDisplay = node.collapsible && node.defaultCollapsed ? ` style="display:none"` : ""
 
-  return `<section class="${cls}"${idAttr(node)}${style ? ` style="${style}"` : ""}${collapsed}${scroll}>
+  return `<section class="${classList(node, cls)}"${idAttr(node)}${style ? ` style="${style}"` : ""}${collapsed}${scroll}>
   ${titleBar}
   <div class="dsl-box-children" style="${childrenStyle}"${childrenDisplay}>${childrenHTML}</div>
 </section>`
@@ -290,7 +304,7 @@ function compileCard(node: CardNode): string {
   const footerDisplay = collapsed ? ` style="display:none"` : ""
   const collapsedAttr = collapsed ? ` data-collapsed="true"` : ""
 
-  return `<section class="dsl-card"${idAttr(node)}${collapsedAttr}>
+  return `<section class="${classList(node, "dsl-card")}"${idAttr(node)}${collapsedAttr}>
   <div class="dsl-card-header">
     <div class="dsl-titlebar">${title}<div class="dsl-titlebar-actions">${titleActions}${toggleBtn}</div></div>
     ${header}
@@ -313,7 +327,7 @@ function compileButton(node: ButtonNode, buttonType: "button" | "submit" = "butt
   // Island wiring is declared per button, so the handler a button triggers does
   // not depend on where the button sits in the rendered tree.
   const eventAttr = islandEventAttr(node.islandHandler, undefined, "click")
-  return `<button class="dsl-button dsl-button-${variant}"${idAttr(node)} type="${buttonType}"${disabled}${eventAttr}${onclickAttr}>${escapeHTML(node.text)}</button>`
+  return `<button class="${classList(node, `dsl-button dsl-button-${variant}`)}"${idAttr(node)} type="${buttonType}"${disabled}${eventAttr}${onclickAttr}>${escapeHTML(node.text)}</button>`
 }
 
 /**
@@ -366,7 +380,9 @@ function compileInput(node: InputNode): string {
   // gap in the form's field grid.
   if (node.inputType === "hidden") return input
 
-  return `<label class="dsl-field"${idOnly(node)}>
+  // className goes on the label, the item a form grid positions, while bindings
+  // stay on the control. A rule for the control itself is a descendant selector.
+  return `<label class="${classList(node, "dsl-field")}"${idOnly(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
   ${input}
 </label>`
@@ -384,7 +400,7 @@ function compileSelect(node: SelectNode): string {
       return `<option value="${escapeHTML(o.value)}"${selected}>${escapeHTML(o.label)}</option>`
     })
     .join("")
-  return `<label class="dsl-field"${idOnly(node)}>
+  return `<label class="${classList(node, "dsl-field")}"${idOnly(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
   <select name="${node.name}"${required}${multiple}${event}${bindAttrs(node)}>${options}</select>
 </label>`
@@ -399,7 +415,7 @@ function compileSlider(node: SliderNode): string {
   const valueType = node.valueType ?? "int"
   const sliderConfig = JSON.stringify({ name: node.name, min, max, step, valueType, defaultValue: defVal })
   const inputAttrs = node.input ? " data-dsl-slider-input" : ""
-  return `<div class="dsl-slider-field"${idAttr(node)} data-dsl-slider='${sliderConfig}'>
+  return `<div class="${classList(node, "dsl-slider-field")}"${idAttr(node)} data-dsl-slider='${sliderConfig}'>
   <span class="dsl-slider-label">
     <span>${escapeHTML(label)}</span>
     <output>${defVal}</output>
@@ -413,7 +429,7 @@ function compileTextArea(node: TextAreaNode): string {
   const required = node.required ? " required" : ""
   const placeholder = node.placeholder ? ` placeholder="${escapeHTML(node.placeholder)}"` : ""
   const rows = node.rows ? ` rows="${node.rows}"` : ""
-  return `<label class="dsl-field"${idOnly(node)}>
+  return `<label class="${classList(node, "dsl-field")}"${idOnly(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>
   <textarea name="${node.name}"${placeholder}${required}${rows}${bindAttrs(node)}></textarea>
 </label>`
@@ -430,13 +446,13 @@ function compileForm(node: FormNode): string {
   // away and the multipart body the handler was assembling would be lost.
   if (node.islandHandler) {
     const event = islandEventAttr(node.islandHandler, "submit", "submit")
-    return `<form class="dsl-form" id="${escapeHTML(node.id)}"${event}${bindAttrs(node)}${onSignal}>
+    return `<form class="${classList(node, "dsl-form")}" id="${escapeHTML(node.id)}"${event}${bindAttrs(node)}${onSignal}>
   <div class="dsl-form-fields">${fields}</div>
   <div class="dsl-form-actions">${submitBtn}</div>
 </form>`
   }
 
-  return `<form class="dsl-form" id="${node.id}" method="post" action="/api/form/${node.id}" onsubmit="handleFormSubmit(event,'${node.id}')"${bindAttrs(node)}${onSignal}>
+  return `<form class="${classList(node, "dsl-form")}" id="${node.id}" method="post" action="/api/form/${node.id}" onsubmit="handleFormSubmit(event,'${node.id}')"${bindAttrs(node)}${onSignal}>
   <div class="dsl-form-fields">${fields}</div>
   <div class="dsl-form-actions">${submitBtn}</div>
 </form>`
@@ -451,7 +467,7 @@ function compileTable(node: TableNode): string {
     .join("")
   const rowActions = (node.rowActions ?? []).map(compileComponent).join("")
 
-  return `<section class="dsl-table-card"${idAttr(node)} data-datasource="${escapeHTML(node.dataSource)}">
+  return `<section class="${classList(node, "dsl-table-card")}"${idAttr(node)} data-datasource="${escapeHTML(node.dataSource)}">
   ${titleBar}
   <div class="dsl-table-wrap">
     <table class="dsl-table" data-datasource="${escapeHTML(node.dataSource)}">
@@ -471,7 +487,7 @@ function compileList(node: ListNode): string {
     }).join("")
     : ""
 
-  return `<section class="dsl-list"${idAttr(node)}${node.dataSource ? ` data-datasource="${escapeHTML(node.dataSource)}"` : ""}>
+  return `<section class="${classList(node, "dsl-list")}"${idAttr(node)}${node.dataSource ? ` data-datasource="${escapeHTML(node.dataSource)}"` : ""}>
   <div class="dsl-list-items">${itemsHTML || '<span class="dsl-list-empty">无数据</span>'}</div>
 </section>`
 }
@@ -479,7 +495,7 @@ function compileList(node: ListNode): string {
 function compileModal(node: ModalNode): string {
   const title = node.title ? `<h2>${escapeHTML(node.title)}</h2>` : ""
   const children = node.children.map(compileComponent).join("")
-  return `<section class="dsl-modal" id="${node.id}"${bindAttrs(node)} hidden>
+  return `<section class="${classList(node, "dsl-modal")}" id="${node.id}"${bindAttrs(node)} hidden>
   ${title}
   <div class="dsl-modal-body">${children}</div>
 </section>`
@@ -528,7 +544,12 @@ function compileIsland(node: IslandNode, devMode = false): string {
 function compileIslandHTML_${safeJSId(node.id)}(state){${generateRenderFnBody(renderFnBody)}}`
   }
 
-  return `<div data-island="${escapeHTML(node.id)}" data-dsl-initial-state='${escapeHTML(stateJson)}'>
+  // className lands on the island wrapper, which is a plain div the layout would
+  // otherwise have no way to style. `bind` is excluded from this element instead:
+  // the runtime syncs with querySelectorAll from here, which never matches it.
+  const wrapperClass = node.className ? ` class="${escapeHTML(node.className)}"` : ""
+
+  return `<div data-island="${escapeHTML(node.id)}"${wrapperClass} data-dsl-initial-state='${escapeHTML(stateJson)}'>
 ${markedHTML}
 </div>
 <script>
@@ -635,8 +656,8 @@ function compileKatex(node: KatexNode): string {
       throwOnError: false,
     })
     return node.displayMode
-      ? `<div class="dsl-katex dsl-katex-block">${html}</div>`
-      : `<span class="dsl-katex dsl-katex-inline">${html}</span>`
+      ? `<div class="${classList(node, "dsl-katex dsl-katex-block")}">${html}</div>`
+      : `<span class="${classList(node, "dsl-katex dsl-katex-inline")}">${html}</span>`
   } catch {
     return `<code class="dsl-katex-error">${escapeHTML(node.expression)}</code>`
   }

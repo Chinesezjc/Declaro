@@ -14,6 +14,21 @@ export type ComponentBase = {
   sizeX?: SizeMode
   sizeY?: SizeMode
   bind?: ComponentBinding
+  /**
+   * Extra classes appended after the component's own dsl-* classes, so a page
+   * can reach a stylesheet that keys on its own names instead of Declaro's.
+   *
+   * Space-separated, and additive only: the dsl-* classes stay, because the
+   * component's own styling comes from them. A page that has to override one
+   * writes a more specific rule.
+   *
+   * Always lands on the component's outermost element, which is where layout
+   * classes have to be: a field's class goes on its `dsl-field` label, the grid
+   * item a form places, not on the control inside it. This is the opposite of
+   * `bind`, which targets the control so `disabled` reaches it. To style the
+   * control itself, write a descendant rule: `.my-field input { ... }`.
+   */
+  className?: string
 }
 
 /**

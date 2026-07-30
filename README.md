@@ -253,6 +253,8 @@ Table({
   alignY?: "top" | "center" | "bottom" | "stretch"
   sizeX?: "hug" | "fill"
   sizeY?: "hug" | "fill"
+  className?: string   // 追加到最外层元素的 class（见 className 章节）
+  bind?: ComponentBinding  // Island 内的响应绑定（见 bind 章节）
 }
 ```
 
@@ -352,6 +354,20 @@ Select({
   options: ["easy", "normal", "hard", "expert", "master"].map((v) => ({ label: v, value: v })),
 })
 ```
+
+## className：接自己的样式表
+
+`className` 把额外的 class 追加到组件最外层元素，用来对接按自己命名写的样式表（`.panel`、`.btn.primary`、`.align-end`）。追加而非替换：组件自身的样式来自 dsl-* class，去掉就没了；要覆盖某条规则写更高优先级的选择器。
+
+```ts
+Box({ layout: "vertical", children: [...], className: "panel stack" })
+Button({ text: "启动压测", variant: "primary", className: "btn primary" })
+Input({ name: "count", inputType: "number", min: 1, className: "align-end" })
+```
+
+落点是最外层元素，因为布局 class 必须落在被父级定位的那个元素上：字段的 class 在 `dsl-field` 那层 `label`（表单网格的格子）而不是里面的控件，带 `titleActions` 的 `Text` 在标题栏而不是文本元素。这与 `bind` 相反 —— `bind` 落在控件上，因为 `disabled` 必须作用到控件。要给控件本身写样式用后代选择器：`.my-field input { ... }`。
+
+`Html` 忽略 `className`：它输出的是调用方给的字符串，class 直接写在那段 HTML 里。
 
 ## bind：声明式响应绑定
 

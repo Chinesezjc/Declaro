@@ -91,5 +91,9 @@ export function Island(config: IslandConfig): IslandNode {
     alignY: config.alignY,
     sizeX: config.sizeX,
     sizeY: config.sizeY,
+    className: config.className,
+    // `bind` is deliberately not carried over: the runtime syncs bindings with
+    // querySelectorAll from the island's own element, which never matches that
+    // element, so a binding declared here could never fire.
   }
 }
