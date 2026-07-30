@@ -507,8 +507,11 @@ function compileIsland(node: IslandNode, devMode = false): string {
   const childTree = node.render(node.initialState)
   const staticHTML = compileComponent(childTree)
 
-  // Mark state bindings with data-dsl-* attributes
-  let markedHTML = markStateBindings(staticHTML, node.initialState)
+  // Mark state bindings with data-dsl-* attributes. An island whose state holds
+  // values that also appear as literal text turns this off and declares its
+  // bindings with `bind` instead, so the inference cannot mark the wrong node.
+  let markedHTML =
+    node.inferBindings === false ? staticHTML : markStateBindings(staticHTML, node.initialState)
 
   // Add source mapping in dev mode
   if (devMode) {

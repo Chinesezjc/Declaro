@@ -369,6 +369,12 @@ Input({ name: "count", inputType: "number", min: 1, className: "align-end" })
 
 `Html` 忽略 `className`：它输出的是调用方给的字符串，class 直接写在那段 HTML 里。
 
+## 关掉文本绑定推断
+
+编译器默认在 Island 的渲染结果里搜 `initialState` 的值来推断文本绑定，marked 的是文本内容与某个 state 值完全相等的节点。这是对意图的猜测：state 里有 `{ route: "overview" }` 时，导航栏里那个恰好写着 `overview` 的标签也会被标上，之后每次 `set()` 都把它改写成当前路由。
+
+state 里存着同时会作为字面文本出现的值时，`Island({ inferBindings: false })` 关掉推断，需要的绑定全部用 `bind` 显式声明。
+
 ## bind：声明式响应绑定
 
 Island 内的组件用 `bind` 声明要跟随 state 变化的部分，编译为运行时同步的 `data-dsl-*` 属性。不写 `bind` 时只有编译器的文本推断（整个文本节点与某个 state 值完全相等）会产生绑定，所以初值为空、或文本是周围散文的子串的字段必须显式声明。

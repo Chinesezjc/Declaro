@@ -47,6 +47,17 @@ export type IslandNode = ComponentBase & {
    * When true, handlers receive pageStateHandle as their fourth argument.
    */
   usePageState?: boolean
+  /**
+   * Whether to infer text bindings by matching rendered text against the initial
+   * state. Default true.
+   *
+   * The inference marks any text node that equals a state value, which is a guess
+   * about intent: an island holding `{ route: "overview" }` also marks the
+   * navigation label that happens to read "overview", and every set() then
+   * rewrites that label to the current route. Set false and declare bindings with
+   * `bind` when the state holds values that also appear as literal text.
+   */
+  inferBindings?: boolean
 }
 
 /**
@@ -82,6 +93,7 @@ export function Island(config: IslandConfig): IslandNode {
     handlers: config.handlers,
     strategy: config.strategy,
     usePageState: config.usePageState,
+    inferBindings: config.inferBindings,
     slot: config.slot,
     order: config.order,
     visible: config.visible,
