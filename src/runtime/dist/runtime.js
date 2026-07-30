@@ -647,6 +647,29 @@ var __DSL_RUNTIME__ = (() => {
     root.addEventListener("submit", handler, true);
     root.addEventListener("keydown", handler, true);
   }
+  var listRenders = /* @__PURE__ */ new WeakMap();
+  function fillPlaceholders(fragment, item) {
+    const resolve = (prop) => {
+      if (typeof item === "object" && item != null) {
+        const val = item[prop];
+        return val != null ? String(val) : "";
+      }
+      return prop === "_value" ? String(item) : "";
+    };
+    const substitute = (text) => text.replace(/\{\{(\w+)\}\}/g, (_m, prop) => resolve(prop));
+    const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.nodeType === 3) {
+        const text = node.nodeValue;
+        if (text && text.includes("{{")) node.nodeValue = substitute(text);
+        continue;
+      }
+      const el = node;
+      for (const attr of Array.from(el.attributes)) {
+        if (attr.value.includes("{{")) el.setAttribute(attr.name, substitute(attr.value));
+      }
+    }
+  }
   function syncBindings(root, state) {
     root.querySelectorAll("[data-dsl-text]").forEach((el) => {
       const key = el.getAttribute("data-dsl-text");
@@ -708,23 +731,25 @@ var __DSL_RUNTIME__ = (() => {
       if (!Array.isArray(items)) return;
       const template = container.querySelector("template[data-dsl-list-item]");
       if (!template) return;
-      const existingItems = container.querySelectorAll("[data-dsl-list-item]");
-      existingItems.forEach((el) => el.remove());
+      template.style.display = "none";
+      const previous = listRenders.get(container);
+      if (previous) previous.forEach((node) => node.remove());
+      const rendered = [];
       items.forEach((item, index) => {
         const clone = template.content.cloneNode(true);
-        const wrapper = document.createElement("div");
-        wrapper.setAttribute("data-dsl-list-item", "");
-        wrapper.setAttribute("data-dsl-list-index", String(index));
-        wrapper.appendChild(clone);
-        const html = wrapper.innerHTML.replace(/\{\{(\w+)\}\}/g, (_m, prop) => {
-          if (typeof item === "object" && item != null) {
-            return String(item[prop] ?? "");
+        fillPlaceholders(clone, item);
+        const nodes = Array.from(clone.childNodes);
+        for (const node of nodes) {
+          if (node.nodeType === 1) {
+            const el = node;
+            el.setAttribute("data-dsl-list-item", "");
+            el.setAttribute("data-dsl-list-index", String(index));
           }
-          return prop === "_value" ? String(item) : "";
-        });
-        wrapper.innerHTML = html;
-        container.appendChild(wrapper);
+        }
+        container.appendChild(clone);
+        rendered.push(...nodes);
       });
+      listRenders.set(container, rendered);
     });
     root.querySelectorAll("[data-dsl-html]").forEach((el) => {
       const key = el.getAttribute("data-dsl-html");

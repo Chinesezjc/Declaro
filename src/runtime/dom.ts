@@ -66,6 +66,58 @@ export function bindIslandEvents(root: HTMLElement, registry: Record<string, Eve
 // Six binding types, all handled by syncBindings() in a single pass:
 
 /**
+ * The nodes each list container rendered last time, so the next render can
+ * remove exactly those.
+ *
+ * A WeakMap rather than an attribute sweep because the template is itself marked
+ * with data-dsl-list-item, and because it keeps no reference to a container once
+ * the container leaves the DOM.
+ */
+const listRenders = new WeakMap<HTMLElement, ChildNode[]>()
+
+/**
+ * Substitute {{prop}} in a rendered list item with the item's values, walking
+ * text nodes and attributes rather than rewriting the item's HTML.
+ *
+ * Values are assigned as text and attribute values, so `<` and `&` in data stay
+ * literal. Rewriting innerHTML instead made every value a markup injection
+ * point: an account named `a<b>c` became a real <b> element, and any value could
+ * close its own tag and add attributes.
+ *
+ * A non-object item fills {{_value}}, which is what a list of strings needs. An
+ * absent property becomes the empty string rather than being left as the literal
+ * {{prop}}, so a row with a missing field renders blank instead of showing the
+ * placeholder.
+ */
+function fillPlaceholders(fragment: DocumentFragment, item: unknown): void {
+  const resolve = (prop: string): string => {
+    if (typeof item === "object" && item != null) {
+      const val = (item as Record<string, unknown>)[prop]
+      return val != null ? String(val) : ""
+    }
+    return prop === "_value" ? String(item) : ""
+  }
+  const substitute = (text: string): string =>
+    text.replace(/\{\{(\w+)\}\}/g, (_m, prop: string) => resolve(prop))
+
+  const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeType === 3) {
+      const text = node.nodeValue
+      if (text && text.includes("{{")) node.nodeValue = substitute(text)
+      continue
+    }
+    // Attributes too: a row's href, title or data-* is as much a place for a
+    // value as its text, and an unsubstituted {{pid}} in a data-pid is what an
+    // island handler would then read.
+    const el = node as HTMLElement
+    for (const attr of Array.from(el.attributes)) {
+      if (attr.value.includes("{{")) el.setAttribute(attr.name, substitute(attr.value))
+    }
+  }
+}
+
+/**
  * Update all data-dsl-* bindings within root to reflect current state.
  *
  * Binding types:
@@ -158,26 +210,44 @@ export function syncBindings(root: HTMLElement, state: Record<string, unknown>):
     const template = container.querySelector<HTMLTemplateElement>("template[data-dsl-list-item]")
     if (!template) return
 
-    const existingItems = container.querySelectorAll<HTMLElement>("[data-dsl-list-item]")
-    existingItems.forEach((el) => el.remove())
+    // The template stays in the DOM and carries data-dsl-list-item, so a page
+    // rule keyed on that attribute — `[data-dsl-list-item] { display: block }` —
+    // matches it too and overrides the `display: none` a <template> gets from the
+    // UA stylesheet, giving the template a rendered box. An inline style outranks
+    // the page rule and keeps it out of layout.
+    template.style.display = "none"
 
+    // Remove exactly the nodes the last render appended, tracked in listRenders
+    // rather than matched with a selector. The template carries
+    // data-dsl-list-item itself, so a querySelectorAll sweep for that attribute
+    // deletes the template along with the rows — after which every later render
+    // finds no template and returns, freezing the list at its first render. An
+    // empty first render is enough to trigger it.
+    const previous = listRenders.get(container)
+    if (previous) previous.forEach((node) => node.remove())
+
+    const rendered: ChildNode[] = []
     items.forEach((item: unknown, index: number) => {
       const clone = template.content.cloneNode(true) as DocumentFragment
-      const wrapper = document.createElement("div")
-      wrapper.setAttribute("data-dsl-list-item", "")
-      wrapper.setAttribute("data-dsl-list-index", String(index))
-      wrapper.appendChild(clone)
+      fillPlaceholders(clone, item)
 
-      // Replace {{key}} placeholders in the clone
-      const html = wrapper.innerHTML.replace(/\{\{(\w+)\}\}/g, (_m, prop: string) => {
-        if (typeof item === "object" && item != null) {
-          return String((item as Record<string, unknown>)[prop] ?? "")
+      // Mark the top-level elements, then append. The rows go in as nodes, not
+      // as an HTML string, and without a wrapper element around each one: a
+      // <tr> reaches its <tbody> and an <li> its <ul> directly. Wrapping in a
+      // <div> and assigning innerHTML dropped both, because neither tag is
+      // allowed inside a div and the parser discards what it cannot place.
+      const nodes = Array.from(clone.childNodes)
+      for (const node of nodes) {
+        if (node.nodeType === 1) {
+          const el = node as HTMLElement
+          el.setAttribute("data-dsl-list-item", "")
+          el.setAttribute("data-dsl-list-index", String(index))
         }
-        return prop === "_value" ? String(item) : ""
-      })
-      wrapper.innerHTML = html
-      container.appendChild(wrapper)
+      }
+      container.appendChild(clone)
+      rendered.push(...nodes)
     })
+    listRenders.set(container, rendered)
   })
 
   // 6. HTML bindings

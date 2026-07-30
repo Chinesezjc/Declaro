@@ -403,6 +403,28 @@ Box({ layout: "vertical", children: [...], bind: { show: "onOverview", class: { 
 
 `Script`/`Katex`/`Html` 忽略 `bind`（`Html` 自己写属性）。`Island` 也忽略：运行时用 island 元素自身的 `querySelectorAll` 同步绑定，匹配不到该元素本身，绑在它上面永远不触发 —— 绑到 island 内部的组件上。容器（`Box`/`Card`）上 `show`/`class` 作用于整个面板，但 `text`/`html` 会用 state 值替换掉它的子组件。
 
+### list：从 template 渲染数组
+
+`list` 需要元素内有一个 `<template data-dsl-list-item>`，运行时按 `state[key]` 的每一项克隆它一份追加到元素里：
+
+```ts
+Html({
+  html: `<table><tbody data-dsl-list="rows">
+    <template data-dsl-list-item>
+      <tr><td>{{name}}</td><td><button data-action="stop" data-pid="{{pid}}">停止</button></tr>
+    </template>
+  </tbody></table>`,
+})
+```
+
+`{{prop}}` 在文本和属性里都会被替换，取 `state` 数组里该项的同名字段；字符串数组用 `{{_value}}`。缺失或为 `null` 的字段渲染为空串，不会把 `{{prop}}` 原样显示出来。
+
+替换是按文本节点和属性值赋值完成的，不是拼 HTML 字符串，所以数据里的 `<` 和 `&` 保持字面量。属性也替换，因为行内按钮的 `data-pid` 正是 handler 用来判断是哪一行触发的（见上面的 `data`）。
+
+template 的顶层节点直接进入容器，中间不包 `<div>`：`<tr>` 落进 `<tbody>`、`<li>` 落进 `<ul>`。template 本身留在 DOM 里并带着 `data-dsl-list-item`，运行时给它加了 inline `display: none` —— 页面若有 `[data-dsl-list-item] { display: block }` 这类规则会盖掉 `<template>` 从 UA 样式表拿到的 `display: none`。
+
+`state[key]` 不是数组时（比如接口返回了错误对象）这一轮不渲染，保留上一次的内容而不是清空。
+
 ## data：让一个 handler 服务多个控件
 
 `data` 声明额外的 `data-*` 属性，key 不带 `data-` 前缀：`{ action: "stop", pid: "418" }` 编译为 `data-action="stop" data-pid="418"`。
