@@ -38,6 +38,19 @@ export type InputNode = ComponentBase & {
   inputMode?: "none" | "text" | "decimal" | "numeric" | "tel" | "search" | "email" | "url"
   /** Client-side validation pattern, as an HTML pattern attribute. */
   pattern?: string
+  /**
+   * Range and granularity, as the HTML min/max/step attributes. The browser
+   * validates against them and a number field's spinner steps by `step`.
+   *
+   * "any" is only meaningful for step, where it opts out of granularity
+   * checking; min/max reject it at the type level.
+   */
+  min?: number | string
+  max?: number | string
+  step?: number | "any"
+  /** Length bounds, as the HTML minlength/maxlength attributes. */
+  minLength?: number
+  maxLength?: number
   /** Browser autofill hint; "off" opts a field out. */
   autoComplete?: string
   /** Enclosing Island handler to invoke, and on which DOM event. */

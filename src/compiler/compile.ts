@@ -289,6 +289,16 @@ function attr(name: string, value: string | undefined): string {
   return value ? ` ${name}="${escapeHTML(value)}"` : ""
 }
 
+/**
+ * Emit a numeric attribute. Separate from attr() because 0 is a value a caller
+ * means — min="0" and step="0" both say something — and attr()'s truthiness
+ * check would drop it.
+ */
+function numAttr(name: string, value: number | string | undefined): string {
+  if (value == null || value === "") return ""
+  return ` ${name}="${escapeHTML(String(value))}"`
+}
+
 function compileInput(node: InputNode): string {
   const required = node.required ? " required" : ""
   const placeholder = attr("placeholder", node.placeholder)
@@ -301,8 +311,10 @@ function compileInput(node: InputNode): string {
   const accept = isFile ? attr("accept", node.accept) : ""
   const inputMode = attr("inputmode", node.inputMode)
   const pattern = attr("pattern", node.pattern)
+  const range = numAttr("min", node.min) + numAttr("max", node.max) + numAttr("step", node.step)
+  const length = numAttr("minlength", node.minLength) + numAttr("maxlength", node.maxLength)
   const autoComplete = attr("autocomplete", node.autoComplete)
-  const input = `<input name="${escapeHTML(node.name)}"${type}${placeholder}${required}${value}${accept}${inputMode}${pattern}${autoComplete}${event}>`
+  const input = `<input name="${escapeHTML(node.name)}"${type}${placeholder}${required}${value}${accept}${inputMode}${pattern}${range}${length}${autoComplete}${event}>`
 
   // A hidden input has nothing to label, and the dsl-field wrapper would leave a
   // gap in the form's field grid.
@@ -318,8 +330,13 @@ function compileSelect(node: SelectNode): string {
   const required = node.required ? " required" : ""
   const multiple = node.multiple ? " multiple" : ""
   const event = islandEventAttr(node.islandHandler, node.islandEvent, "change")
+  // defaultValue marks the option to pre-select. Comparing the raw values, not
+  // the escaped ones, so a default containing & or " still matches its option.
   const options = node.options
-    .map((o) => `<option value="${escapeHTML(o.value)}">${escapeHTML(o.label)}</option>`)
+    .map((o) => {
+      const selected = node.defaultValue != null && o.value === node.defaultValue ? " selected" : ""
+      return `<option value="${escapeHTML(o.value)}"${selected}>${escapeHTML(o.label)}</option>`
+    })
     .join("")
   return `<label class="dsl-field"${idAttr(node)}>
   <span>${escapeHTML(node.label ?? node.name)}</span>

@@ -341,6 +341,18 @@ Form({
 
 `Input` 的 `inputType` 编译为 HTML `type` 属性，另有 `accept`（仅 `file` 生效）、`inputMode`、`pattern`、`autoComplete`。不写 `inputType` 时不输出 `type` 属性。`hidden` 不套 `dsl-field` 外层，避免在字段网格里留空位。`checkbox`/`radio` 不在支持列表内：它们需要与 `dsl-field` 不同的 label 布局。
 
+数值和长度约束写 `min`/`max`/`step`/`minLength`/`maxLength`，编译为同名 HTML 属性由浏览器校验。`0` 会被输出（`min: 0` 才能拒绝负数），不写的约束不输出属性。`step: "any"` 关闭步长校验。
+
+`Select` 的 `defaultValue` 指定预选项，不写时浏览器选第一个：
+
+```ts
+Select({
+  name: "difficulty",
+  defaultValue: "expert",
+  options: ["easy", "normal", "hard", "expert", "master"].map((v) => ({ label: v, value: v })),
+})
+```
+
 ## 已知限制
 
 - Table/List 在静态模式下需要服务端提供数据 API
