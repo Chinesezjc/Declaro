@@ -737,6 +737,10 @@ if (window.location.search.includes('__dsl_debug=1')) {
 <style>
 ${css}
 </style>
+<script>
+${RUNTIME_JS}
+</script>
+${pageStateScript}
 ${headHTML}
 </head>
 <body>
@@ -745,11 +749,7 @@ ${layoutHTML}
 </div>
 <div class="toast-stack" role="status" aria-live="polite"></div>
 ${reactCDN}
-${pageStateScript}
 ${devToolsScript}
-<script>
-${RUNTIME_JS}
-</script>
 </body>
 </html>`
 }

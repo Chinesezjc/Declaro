@@ -348,5 +348,6 @@ Form({
 - IR 可导出但暂不支持反向恢复完整页面
 - 主题系统尚未独立抽象，当前样式在 `src/styles.css`
 - handler 无法引用模块作用域（见上方约定），共享逻辑需走全局命名空间
+- Island 只在 DOM 事件上跑 handler，hydration 本身不发事件。需要页面加载时初始化的话用 `Script({ inline })`，等 `[data-island="<id>"]` 的 `data-dsl-hydrated` 变成 `"true"` 后取 `__DSL__.getIslandState(id)`
 - `npm run typecheck` 当前有 56 个既有报错，尚未清理
 - `ComponentNode` 联合含带索引签名的 `PluginNode`，`node.type === "box"` 之类的判别式收窄失效，遍历组件树时需显式断言节点类型
