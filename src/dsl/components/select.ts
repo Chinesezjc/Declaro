@@ -12,6 +12,9 @@ export type SelectNode = ComponentBase & {
   options: SelectOption[]
   multiple?: boolean
   required?: boolean
+  /** Enclosing Island handler to invoke, and on which DOM event. */
+  islandHandler?: string
+  islandEvent?: "change" | "input"
 }
 
 export function Select(config: Omit<SelectNode, "type">): SelectNode {

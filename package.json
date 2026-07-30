@@ -8,6 +8,7 @@
     "build": "npm run build:runtime && tsc --noEmit && tsx src/server/index.ts",
     "build:static": "npm run build:runtime && tsx src/compiler/compile.ts --output",
     "build:runtime": "tsx scripts/build-runtime.ts",
+    "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "bin": {

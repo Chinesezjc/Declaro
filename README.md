@@ -274,6 +274,54 @@ Env({ layout: "custom", slots: [...] })     // 自定义（当前同 default）
 - 业务配置不显示在 UI 时放 `meta`
 - 表格行操作通过 `ctx.row` 获取当前行数据
 - 表单提交通过 `ctx.form?.values` 获取表单值
+- Island 内的按钮/字段用 `islandHandler` 显式声明要触发的 handler
+
+## Island handler 约定
+
+Island 的 handler 在编译期经 `Function.prototype.toString()` 序列化进 HTML，函数体原样输出，**外层模块作用域不会被保留**。因此 handler 体内只能引用：
+
+- 自己的参数、自己的局部变量、字面量
+- 浏览器运行时可达的全局对象
+
+不能引用 import 进来的辅助函数或模块级常量 —— 编译后它们没有定义，运行时抛 `ReferenceError`：
+
+```ts
+const API_BASE = "/api"                       // ✗ handler 里引用会报错
+function helper(x: number) { return x * 2 }   // ✗ 同上
+
+handlers: {
+  go: (_e, stateHandle) => {
+    fetch(API_BASE + "/x")        // ReferenceError: API_BASE is not defined
+    stateHandle.set({ v: helper(1) })
+  },
+}
+```
+
+共享逻辑挂到全局命名空间，用 `Script({ inline })` 注入：
+
+```ts
+Script({ inline: `window.__APP__ = { base: "/api", helper: (x) => x * 2 };` })
+
+handlers: {
+  go: (_e, stateHandle) => {
+    fetch(window.__APP__.base + "/x")
+    stateHandle.set({ v: window.__APP__.helper(1) })
+  },
+}
+```
+
+handler 签名是 `(event, stateHandle, container, pageStateHandle?)`，按位置调用。`stateHandle` 是对象，不是函数：用 `stateHandle.set({...})` 更新、`stateHandle.getSnapshot()` 读取。用到第 N 个参数时前面的参数必须写全。
+
+按钮和字段通过 `islandHandler` 声明绑定，与它在渲染树里的位置无关：
+
+```ts
+Button({ text: "停止", islandHandler: "stop" })
+Input({ name: "uid", islandHandler: "onUid" })                      // 默认 input 事件
+Select({ name: "server", islandHandler: "onServer" })               // 默认 change 事件
+Input({ name: "q", islandHandler: "onEnter", islandEvent: "keydown" })
+```
+
+没写 `islandHandler` 的按钮不绑定任何 handler。
 
 ## 已知限制
 
@@ -281,3 +329,5 @@ Env({ layout: "custom", slots: [...] })     // 自定义（当前同 default）
 - Modal 静态模式下仅展示结构，完整交互待后续
 - IR 可导出但暂不支持反向恢复完整页面
 - 主题系统尚未独立抽象，当前样式在 `src/styles.css`
+- handler 无法引用模块作用域（见上方约定），共享逻辑需走全局命名空间
+- `npm run typecheck` 当前有 90 个既有报错，尚未清理

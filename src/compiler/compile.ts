@@ -249,28 +249,46 @@ function compileButton(node: ButtonNode): string {
   const disabled = node.disabled ? " disabled" : ""
   const onClick = actionToJS(node.onClick)
   const onclickAttr = onClick ? ` onclick="${onClick}"` : ""
-  return `<button class="dsl-button dsl-button-${variant}" type="button"${disabled}${onclickAttr}>${escapeHTML(node.text)}</button>`
+  // Island wiring is declared per button, so the handler a button triggers does
+  // not depend on where the button sits in the rendered tree.
+  const eventAttr = islandEventAttr(node.islandHandler, undefined, "click")
+  return `<button class="dsl-button dsl-button-${variant}" type="button"${disabled}${eventAttr}${onclickAttr}>${escapeHTML(node.text)}</button>`
+}
+
+/**
+ * Emit the island wiring attribute for a field. The event name defaults per
+ * field type; bindIslandEvents() dispatches on it in the browser.
+ */
+function islandEventAttr(
+  handler: string | undefined,
+  event: string | undefined,
+  defaultEvent: string,
+): string {
+  if (!handler) return ""
+  return ` data-dsl-event="${escapeHTML(event ?? defaultEvent)}:${escapeHTML(handler)}"`
 }
 
 function compileInput(node: InputNode): string {
   const required = node.required ? " required" : ""
   const placeholder = node.placeholder ? ` placeholder="${escapeHTML(node.placeholder)}"` : ""
   const value = node.defaultValue ? ` value="${escapeHTML(node.defaultValue)}"` : ""
+  const event = islandEventAttr(node.islandHandler, node.islandEvent, "input")
   return `<label class="dsl-field">
   <span>${escapeHTML(node.label ?? node.name)}</span>
-  <input name="${node.name}"${placeholder}${required}${value}>
+  <input name="${node.name}"${placeholder}${required}${value}${event}>
 </label>`
 }
 
 function compileSelect(node: SelectNode): string {
   const required = node.required ? " required" : ""
   const multiple = node.multiple ? " multiple" : ""
+  const event = islandEventAttr(node.islandHandler, node.islandEvent, "change")
   const options = node.options
     .map((o) => `<option value="${escapeHTML(o.value)}">${escapeHTML(o.label)}</option>`)
     .join("")
   return `<label class="dsl-field">
   <span>${escapeHTML(node.label ?? node.name)}</span>
-  <select name="${node.name}"${required}${multiple}>${options}</select>
+  <select name="${node.name}"${required}${multiple}${event}>${options}</select>
 </label>`
 }
 
@@ -371,22 +389,9 @@ function compileIsland(node: IslandNode, devMode = false): string {
     markedHTML = markedHTML.replace(/<div /, `<div data-dsl-source="island:${node.id}" `)
   }
 
-  // Wire up button events
+  // Buttons carry their own data-dsl-event, emitted by compileButton from
+  // Button({ islandHandler }). Nothing to wire here.
   const handlerNames = node.handlers ? Object.keys(node.handlers) : []
-  if (handlerNames.length > 0) {
-    let handlerIdx = 0
-    markedHTML = markedHTML.replace(
-      /<button class="dsl-button([^"]*)" type="button"([^>]*)>/g,
-      (match, cls, rest) => {
-        if (handlerIdx < handlerNames.length) {
-          const name = handlerNames[handlerIdx]
-          handlerIdx++
-          return `<button class="dsl-button${cls}" type="button" data-dsl-event="click:${escapeHTML(name)}"${rest}>`
-        }
-        return match
-      },
-    )
-  }
 
   const stateJson = JSON.stringify(node.initialState)
   const strategy = node.strategy ?? "bindings"
@@ -485,8 +490,9 @@ function safeJSId(s: string): string {
 }
 
 function generateHandlerBody(fnStr: string): string {
-  // Extract the function body from the toString() output
-  // The handler signature is (event, state, set) => { ... }
+  // Extract the function body from the toString() output. The body is re-emitted
+  // inside a function whose parameters follow IslandHandler:
+  // (event, stateHandle, container, pageStateHandle?).
   const bodyMatch = fnStr.match(/=>\s*(\{[\s\S]*\})/m)
   if (bodyMatch) return bodyMatch[1]
   // Try function body
