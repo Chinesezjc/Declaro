@@ -425,6 +425,21 @@ template 的顶层节点直接进入容器，中间不包 `<div>`：`<tr>` 落�
 
 `state[key]` 不是数组时（比如接口返回了错误对象）这一轮不渲染，保留上一次的内容而不是清空。
 
+行内元素上的 `data-dsl-item-attr` 按该行自己的字段设置布尔属性，`"属性:字段"`，空格分隔多组：
+
+```html
+<template data-dsl-list-item>
+  <tr>
+    <td>{{task_id}}</td>
+    <td><button data-dsl-item-attr="disabled:notPending">提前开始</button></td>
+  </tr>
+</template>
+```
+
+字段为真时属性设为空串，为假时移除。值经 `String()` 传来，所以空串、`"false"`、`"0"` 都算假。
+
+这件事 `data-dsl-attr` 做不到：它读的是 island state，那是整张表一个值而不是每行一个，结果要么全行禁用要么全不禁用。`{{prop}}` 也做不到：布尔属性只要出现就生效，与值无关，`disabled="{{locked}}"` 会禁用每一行。表格里按行区分的 `disabled` 和 `hidden` 需要这个 —— 已经不是 pending 的任务不该提供「提前开始」，正在用的会话不该提供踢自己下线。
+
 ## data：让一个 handler 服务多个控件
 
 `data` 声明额外的 `data-*` 属性，key 不带 `data-` 前缀：`{ action: "stop", pid: "418" }` 编译为 `data-action="stop" data-pid="418"`。

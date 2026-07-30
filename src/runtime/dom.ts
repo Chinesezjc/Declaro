@@ -114,6 +114,43 @@ function fillPlaceholders(fragment: DocumentFragment, item: unknown): void {
     for (const attr of Array.from(el.attributes)) {
       if (attr.value.includes("{{")) el.setAttribute(attr.name, substitute(attr.value))
     }
+    applyItemAttrs(el, resolve)
+  }
+}
+
+/**
+ * Set or remove boolean attributes named by data-dsl-item-attr, from the item's
+ * own properties.
+ *
+ * `data-dsl-item-attr="disabled:locked hidden:archived"` sets each attribute to
+ * the empty string while the item's property is truthy and removes it otherwise.
+ * An empty string, "false" and "0" all count as false, because the value arrives
+ * through String() and a row's flag written as 0 or false means off.
+ *
+ * data-dsl-attr cannot do this: it reads island state, which is per-list rather
+ * than per-row, so every row would get the same answer. A {{prop}} placeholder
+ * cannot either — a boolean attribute is on as soon as it is present, whatever
+ * its value, so `disabled="{{locked}}"` disables every row. Per-row `disabled`
+ * and `hidden` are what a table of action buttons needs: a task that is no longer
+ * pending must not offer "start now", and the session you are using must not
+ * offer to revoke itself.
+ */
+function applyItemAttrs(el: HTMLElement, resolve: (prop: string) => string): void {
+  const spec = el.getAttribute("data-dsl-item-attr")
+  if (!spec) return
+  for (const pair of spec.split(/\s+/)) {
+    if (!pair) continue
+    const colonIdx = pair.indexOf(":")
+    if (colonIdx < 0) continue
+    const attrName = pair.slice(0, colonIdx)
+    const prop = pair.slice(colonIdx + 1)
+    if (!attrName || !prop) continue
+    const val = resolve(prop)
+    if (val === "" || val === "false" || val === "0") {
+      el.removeAttribute(attrName)
+    } else {
+      el.setAttribute(attrName, "")
+    }
   }
 }
 

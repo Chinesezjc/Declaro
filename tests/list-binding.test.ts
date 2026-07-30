@@ -218,6 +218,48 @@ test("two lists on one page render independently", () => {
   assert.equal(root.querySelectorAll("#b > li").length, 2)
 })
 
+test("data-dsl-item-attr sets a boolean attribute per row", () => {
+  // Which rows offer an action is a per-row question, and data-dsl-attr answers
+  // it from island state, so it would disable every row or none.
+  const { root } = mount(`<table><tbody id="b" data-dsl-list="rows">
+    <template data-dsl-list-item><tr><td>
+      <button data-dsl-item-attr="disabled:locked">start</button>
+    </td></tr></template>
+  </tbody></table>`)
+  syncBindings(root, { rows: [{ locked: true }, { locked: false }] })
+
+  const buttons = root.querySelectorAll("button")
+  assert.equal(buttons.length, 2)
+  assert.equal(buttons[0].hasAttribute("disabled"), true)
+  assert.equal(buttons[1].hasAttribute("disabled"), false)
+})
+
+test("data-dsl-item-attr treats an absent property, \"false\" and 0 as off", () => {
+  // A row's flag arrives through String(), so a boolean false and a numeric 0
+  // both reach the attribute as text that is nonetheless not a truthy flag.
+  const { root } = mount(`<ul id="l" data-dsl-list="rows">
+    <template data-dsl-list-item><li data-dsl-item-attr="hidden:gone"></li></template>
+  </ul>`)
+  syncBindings(root, { rows: [{}, { gone: false }, { gone: 0 }, { gone: "" }, { gone: "yes" }] })
+
+  const items = root.querySelectorAll("#l > li")
+  assert.deepEqual(
+    Array.from(items).map((el) => el.hasAttribute("hidden")),
+    [false, false, false, false, true],
+  )
+})
+
+test("data-dsl-item-attr sets several attributes from one spec", () => {
+  const { root } = mount(`<ul id="l" data-dsl-list="rows">
+    <template data-dsl-list-item><li data-dsl-item-attr="disabled:a hidden:b"></li></template>
+  </ul>`)
+  syncBindings(root, { rows: [{ a: 1, b: 0 }] })
+
+  const li = root.querySelector("#l > li")!
+  assert.equal(li.hasAttribute("disabled"), true)
+  assert.equal(li.hasAttribute("hidden"), false)
+})
+
 test("a template with several top-level nodes marks each of them", () => {
   // A two-row template is how a table shows a detail row under each entry.
   // Wrapped in a <table>: a bare <tbody> is not allowed as a child of <body>, so

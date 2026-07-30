@@ -668,6 +668,25 @@ var __DSL_RUNTIME__ = (() => {
       for (const attr of Array.from(el.attributes)) {
         if (attr.value.includes("{{")) el.setAttribute(attr.name, substitute(attr.value));
       }
+      applyItemAttrs(el, resolve);
+    }
+  }
+  function applyItemAttrs(el, resolve) {
+    const spec = el.getAttribute("data-dsl-item-attr");
+    if (!spec) return;
+    for (const pair of spec.split(/\s+/)) {
+      if (!pair) continue;
+      const colonIdx = pair.indexOf(":");
+      if (colonIdx < 0) continue;
+      const attrName = pair.slice(0, colonIdx);
+      const prop = pair.slice(colonIdx + 1);
+      if (!attrName || !prop) continue;
+      const val = resolve(prop);
+      if (val === "" || val === "false" || val === "0") {
+        el.removeAttribute(attrName);
+      } else {
+        el.setAttribute(attrName, "");
+      }
     }
   }
   function syncBindings(root, state) {
